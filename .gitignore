@@ -1,0 +1,22 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Pandora Agent workspace files (auto-managed)
+.claude/
+.codex/
+.agent/
+*.agent.json
+.aider*
+.aider.chat.history.md
+.aider.input.history
+
