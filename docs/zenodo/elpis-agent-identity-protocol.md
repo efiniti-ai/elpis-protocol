@@ -351,6 +351,105 @@ e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 550e8400-e29b-41d4-a716-446655440000
 ```
 
+#### 3.1.1 Normative Canonicalization Specification
+
+The canonical string construction described above requires precise normalization rules to ensure that independently implemented signers and verifiers produce identical canonical strings for the same logical request. This section provides the normative specification in ABNF (RFC 5234).
+
+**ABNF Grammar:**
+
+```abnf
+canonical-string = method LF url LF body-hash LF timestamp LF nonce
+
+method           = 1*UPALPHA
+                 ; HTTP method in uppercase: "GET", "POST", "PUT",
+                 ; "DELETE", "PATCH", "HEAD", "OPTIONS"
+
+url              = scheme "://" authority path-abempty ["?" query]
+                 ; Fully normalized URL per rules below
+
+body-hash        = 64HEXDIG
+                 ; Lowercase hex-encoded SHA-256 of request body
+                 ; For bodyless requests: SHA-256 of empty string
+                 ; = "e3b0c44298fc1c149afbf4c8996fb924
+                 ;    27ae41e4649b934ca495991b7852b855"
+
+timestamp        = date-fullyear "-" date-month "-" date-mday
+                   "T" time-hour ":" time-minute ":" time-second "Z"
+                 ; ISO 8601 UTC only, no timezone offset variants
+
+nonce            = 8HEXDIG "-" 4HEXDIG "-" "4" 3HEXDIG "-"
+                   variant 3HEXDIG "-" 12HEXDIG
+                 ; UUID v4 in lowercase canonical form (RFC 9562)
+
+variant          = %x38-39 / %x61-62
+                 ; '8', '9', 'a', or 'b'
+
+LF               = %x0A  ; Line Feed (not CRLF)
+
+UPALPHA          = %x41-5A  ; A-Z
+
+HEXDIG           = DIGIT / %x61-66  ; 0-9, a-f (lowercase only)
+```
+
+**URL Normalization Rules:**
+
+The URL component MUST be normalized before inclusion in the canonical string. The following rules are applied in order:
+
+1. **Scheme**: Lowercase. `HTTPS` → `https`.
+2. **Host**: Lowercase. `API.Example.COM` → `api.example.com`.
+3. **Port**: Omit default ports. `https://api.example.com:443/` → `https://api.example.com/`. Non-default ports are preserved: `https://api.example.com:8443/`.
+4. **Path**: Resolve `.` and `..` segments (RFC 3986 Section 5.2.4). Preserve trailing slash. Percent-encode reserved characters per RFC 3986. Decode unreserved characters: `%41` → `A`. Normalize percent-encoding to uppercase: `%2f` → `%2F`.
+5. **Query Parameters**: Sort lexicographically by key, then by value for duplicate keys. Preserve empty values: `key=` is distinct from `key`. Percent-encode consistently per rule 4.
+6. **Fragment**: Remove entirely. Fragment identifiers (`#section`) are never sent to the server and MUST NOT be included.
+
+**Normalization Examples:**
+
+```
+Input:  HTTPS://API.Example.COM:443/v1/Data/../users?page=2&count=10&page=1
+Output: https://api.example.com/v1/users?count=10&page=1&page=2
+
+Input:  https://api.example.com/search?q=hello+world&lang=en#results
+Output: https://api.example.com/search?lang=en&q=hello+world
+
+Input:  https://api.example.com:8443/v1/data?
+Output: https://api.example.com:8443/v1/data
+```
+
+**Body Hash Rules:**
+
+1. The body hash MUST be computed over the raw request body bytes, not a decoded or parsed representation.
+2. For requests with no body (GET, HEAD, DELETE without body, OPTIONS), the hash MUST be the SHA-256 of the zero-length byte string: `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+3. For requests with `Content-Encoding` (e.g., gzip), the hash is computed over the compressed body as transmitted.
+4. The hash MUST be hex-encoded in lowercase.
+
+**Timestamp Rules:**
+
+1. Timestamps MUST be in UTC, indicated by the `Z` suffix.
+2. Offset variants (`+00:00`, `-05:00`) MUST NOT be used.
+3. Fractional seconds MUST NOT be included. Truncate to whole seconds.
+4. Verifiers MUST accept timestamps within a ±30 second window of their own clock.
+5. Implementations SHOULD use NTP-synchronized clocks with drift ≤1 second.
+
+**Nonce Rules:**
+
+1. Nonces MUST be UUID v4 (RFC 9562) in lowercase canonical form.
+2. Verifiers MUST reject previously-seen nonces within the timestamp validity window.
+3. Nonce storage MAY be pruned for entries older than 60 seconds (2× the timestamp window).
+
+**Canonical String Assembly:**
+
+The five components are joined by a single Line Feed character (`0x0A`). No trailing Line Feed is appended. The resulting string is encoded as UTF-8 before signing.
+
+**Relationship to IETF HTTP Message Signatures (RFC 9421):**
+
+RFC 9421 defines a general mechanism for HTTP message signing with component identifiers and signature parameters. Elpis deliberately uses a simplified canonical string rather than adopting RFC 9421 directly, for the following reasons:
+
+1. **Simplicity**: Elpis signs 5 fixed fields. RFC 9421 requires negotiating which components to sign, managing `@signature-params`, and handling derived components — complexity that serves no purpose when the signer and the identity mechanism are co-located in the proxy.
+2. **Proxy Transparency**: RFC 9421 requires the signer to select headers for inclusion. Since Elpis signs at the proxy layer before headers reach the destination, some headers may not yet exist (e.g., `Content-Length` after chunked encoding). A self-contained canonical string avoids this ordering dependency.
+3. **Determinism**: RFC 9421's flexibility introduces ambiguity — different implementations may select different components. Elpis' fixed canonical format guarantees identical inputs across all implementations.
+
+Future protocol versions MAY adopt RFC 9421 component identifiers if interoperability with HTTP Message Signatures ecosystems becomes desirable. The current design prioritizes implementation simplicity and verification determinism.
+
 ### 3.2 Ed25519 Signature
 
 The canonical string is signed using the Ed25519 digital signature algorithm (RFC 8032):
@@ -594,10 +693,61 @@ This creates a fully bidirectional chain: the user can verify the agent's identi
 
 If the infrastructure operator's host is fully compromised (root access to the machine running the proxy containers), the attacker gains access to the signing keys. Mitigations:
 
-1. **HSM (Hardware Security Module)**: Keys stored in hardware, not extractable
-2. **Key Rotation**: Regular rotation limits the window of compromise
-3. **Monitoring**: Anomaly detection on signing patterns
-4. **Revocation**: Compromised keys can be revoked on-chain in seconds
+1. **HSM (Hardware Security Module)**: Keys stored in hardware, not extractable (see Section 6.2.1)
+2. **TEE (Trusted Execution Environment)**: Signing operations isolated in hardware enclaves (see Section 6.2.1)
+3. **Key Rotation**: Regular rotation limits the window of compromise
+4. **Monitoring**: Anomaly detection on signing patterns
+5. **Revocation**: Compromised keys can be revoked on-chain in seconds
+
+#### 6.2.1 Hardware-Backed Key Management: TEE and HSM Integration
+
+In the current reference implementation, Ed25519 private keys are stored encrypted-at-rest in Redis. An attacker with root access can: (1) read process memory of the proxy to extract decrypted keys during signing operations, (2) access the Redis instance and attempt offline decryption of stored keys, or (3) intercept key material during key rotation. Hardware-backed key management addresses all three vectors by ensuring private keys **never exist in extractable form in host memory**.
+
+**Path 1: Hardware Security Modules (HSM)**
+
+For cloud-deployed providers, managed HSM services offer the lowest barrier to hardware-backed keys:
+
+| Provider | Service | Ed25519 Support | Integration |
+|---|---|---|---|
+| AWS | CloudHSM / KMS | KMS: Ed25519 natively (2024+); CloudHSM: via PKCS#11 | Sign API call per request |
+| Google Cloud | Cloud HSM (via Cloud KMS) | Ed25519 via `EC_SIGN_ED25519` | Sign API call per request |
+| Azure | Managed HSM / Key Vault | Ed25519 via Key Vault Premium | Sign API call per request |
+| Thales | Luna Network HSM | Ed25519 via firmware ≥7.8 | PKCS#11 or JCA |
+| YubiHSM 2 | USB HSM | Ed25519 natively | yubihsm-connector SDK |
+
+The proxy stores only a **key reference** (HSM key ID) in Redis, not the private key. Signing operations are delegated to the HSM via API call. Even full host compromise yields only key references that are useless without HSM authentication. Cloud HSM sign operations add 2-10ms latency per request — negligible for autonomous agent HTTP requests.
+
+**Path 2: Trusted Execution Environments (TEE)**
+
+Intel Software Guard Extensions (SGX) and Trust Domain Extensions (TDX) provide hardware-isolated enclaves where code and data are protected from the host OS, hypervisor, and even physical access. The signing enclave: (1) generates the Ed25519 key pair inside the enclave during agent provisioning, (2) seals the private key to the enclave identity, (3) exposes a single `sign(canonical_string) → signature` interface, and (4) never exports the private key — not even to the proxy process itself. Even with root access, the attacker cannot read enclave memory.
+
+AWS Nitro Enclaves provide an equivalent isolated compute environment with no persistent storage, no network access, and no interactive access — even for the root user of the parent instance. Key material is encrypted with AWS KMS and can only be decrypted inside the enclave (KMS policy restricts decryption to the enclave's attestation document).
+
+**Path 3: Hybrid Approach (Recommended)**
+
+For production deployments, we recommend a tiered approach:
+
+| Tier | Environment | Key Storage | Signing Latency | Compromise Resistance |
+|---|---|---|---|---|
+| **Tier 1** | Development / Self-hosted | Redis (encrypted at rest) | <0.1ms | Software-level |
+| **Tier 2** | Production / Cloud | Cloud KMS/HSM | 2-10ms | Hardware-backed, API-isolated |
+| **Tier 3** | High-security / Regulated | SGX Enclave or Nitro Enclave | <1ms | Hardware-isolated, attestable |
+
+The Elpis proxy abstraction makes this tiering transparent — the signing interface is identical regardless of backend:
+
+```python
+class KeyStore(Protocol):
+    async def sign(self, agent_did: str, canonical: bytes) -> bytes: ...
+    async def get_public_key(self, agent_did: str) -> bytes: ...
+
+class RedisKeyStore(KeyStore): ...      # Tier 1
+class CloudHSMKeyStore(KeyStore): ...   # Tier 2
+class EnclaveKeyStore(KeyStore): ...    # Tier 3
+```
+
+**Attestation Chain Extension:** TEE-based deployments enable an additional trust property: **hardware attestation**. The enclave can produce a cryptographic attestation document proving: (1) the signing code is the expected, unmodified Elpis proxy enclave, (2) the enclave is running on genuine hardware, and (3) the key was generated inside the enclave and has never been exported. This attestation can be included in the Elpis certificate metadata, allowing verifiers to confirm not just *who* signed a request, but that the signing infrastructure itself has not been tampered with.
+
+**Migration Path:** Upgrading from Tier 1 to Tier 2/3 requires deploying the new key store backend, generating new key pairs in the hardware-backed store, and rotating the agent's on-chain certificate. No changes to the agent, the proxy's signing logic, or the verification protocol are required — a direct consequence of the "identity without cooperation" design.
 
 ### 6.3 Why This Cannot Be Circumvented by the Agent
 
@@ -685,6 +835,48 @@ End-to-end testing demonstrated:
 Existing machine identity solutions address service-to-service authentication within controlled environments. SPIFFE/SPIRE [9] provides workload identity through SVID (SPIFFE Verifiable Identity Document) certificates issued to processes based on attestation. HashiCorp Vault [10] manages secrets and dynamic credentials for machine-to-machine communication. Cloud-native solutions (AWS IAM Roles, Google Service Accounts, Azure Managed Identities) offer provider-specific identity within their ecosystems.
 
 These systems share a common assumption: the workload cooperates with the identity mechanism. SPIFFE requires a SPIRE agent sidecar; Vault requires API calls for credential retrieval; cloud IAM requires SDK integration. Elpis differs fundamentally in requiring zero cooperation from the agent process — identity is injected at the network layer without the agent's awareness or consent. Additionally, none of these systems provide publicly verifiable, cross-organizational identity: a SPIFFE SVID is meaningful within the issuing trust domain but cannot be independently verified by an external party without federation agreements.
+
+#### 9.1.1 Detailed Comparison: SPIFFE/SPIRE, Istio, and Elpis
+
+The most mature machine identity framework — SPIFFE (Secure Production Identity Framework for Everyone) with its reference implementation SPIRE — shares surface-level goals with Elpis but differs fundamentally in architecture, trust model, and scope. The following comparison clarifies why Elpis is not "SPIFFE for agents" but addresses a categorically different problem.
+
+**Architectural Comparison:**
+
+| Dimension | SPIFFE/SPIRE | Istio Service Mesh | Elpis |
+|---|---|---|---|
+| **Identity Model** | SVID (x509 or JWT) issued to workloads | mTLS certificates via Citadel/Istiod | DID + Ed25519 signature per request |
+| **Identity Scope** | Within a single trust domain; cross-domain requires federation | Within a single mesh; multi-mesh requires complex peering | Globally verifiable via XRPL; no federation required |
+| **Agent Cooperation** | Required — SPIRE agent sidecar must run alongside workload | Required — Envoy sidecar injected into pod | **Not required** — identity injected transparently at proxy layer |
+| **Attestation** | Node attestation (AWS IID, K8s SAT, etc.) + workload attestation (Unix PID, K8s pod, Docker labels) | K8s service account identity via Istiod | Container runtime metadata (Docker labels, K8s annotations, LXC properties) read by proxy |
+| **Key Storage** | SPIRE agent manages SVIDs; rotated automatically | Envoy sidecar holds short-lived certs from Istiod | Proxy-side key store (Redis); agent has zero key access |
+| **Revocation** | CRL/OCSP; depends on CA infrastructure; propagation delay varies | Certificate rotation (short-lived certs, ~24h) | On-chain revocation in 3–5 seconds; globally visible |
+| **Public Verifiability** | No — SVIDs meaningful only within trust domain | No — mesh-internal only | **Yes** — any party can verify via XRPL lookup |
+| **Deployment Model** | Sidecar per node (SPIRE agent) + central SPIRE server | Sidecar per pod (Envoy) + control plane (Istiod) | Single forward proxy per provider; shared across all agents |
+| **Runtime Support** | Primarily Kubernetes; extensible via plugins | Kubernetes-native; limited outside K8s | Runtime-agnostic (Docker, Podman, LXC, K8s, bare-metal) |
+| **LLM/AI Agent Awareness** | None — designed for microservices | None — designed for microservices | Purpose-built for autonomous AI agents |
+| **Prompt Injection Resistance** | N/A — identity is software-level, accessible to workload | N/A — Envoy is a sidecar, not a network-level proxy | **Yes** — agent cannot access, modify, or disable identity injection |
+
+**The Fundamental Distinction:**
+
+SPIFFE and Istio solve **service-to-service authentication within controlled environments**. They answer the question: "Is this microservice who it claims to be?" The workload is assumed to be a known, deployed, cooperating piece of software.
+
+Elpis solves **autonomous actor identification across organizational boundaries**. It answers a different question: "Who is responsible for this AI agent's actions?" The agent is assumed to be an autonomous, potentially unpredictable actor that must not participate in its own identification.
+
+This distinction has three concrete consequences:
+
+1. **Cooperation vs. Transparency**: SPIFFE requires a running SPIRE agent process; if the workload kills the sidecar or manipulates its environment, identity breaks. Elpis operates at the network layer — the agent has no mechanism to interfere.
+
+2. **Internal vs. External Trust**: A SPIFFE SVID is a credential within an organizational boundary. Presenting an SVID to an external party requires bilateral federation agreements. An Elpis signature is independently verifiable by any party with internet access — the trust anchor is a public ledger, not a private CA.
+
+3. **Static vs. Autonomous**: SPIFFE identifies deployed services with predictable behavior. Elpis identifies autonomous agents whose behavior is non-deterministic — making the "identity without cooperation" property not just convenient but essential.
+
+**When to Use What:**
+
+- **SPIFFE/SPIRE**: Internal microservice authentication, CI/CD workload identity, cloud-native service mesh — where all parties are within a single trust domain and workloads cooperate.
+- **Istio**: Kubernetes-native service mesh with traffic management, observability, and mTLS — within a single cluster or mesh.
+- **Elpis**: AI agent identification across organizational boundaries, where agents are autonomous, public verifiability is required, and the agent must not participate in its own identity management.
+
+These are complementary, not competing. An Elpis-identified agent running inside a SPIFFE trust domain would carry both identities: SPIFFE for internal service mesh authentication, Elpis for external cross-organizational accountability.
 
 ### 9.2 AI Safety and Alignment
 
