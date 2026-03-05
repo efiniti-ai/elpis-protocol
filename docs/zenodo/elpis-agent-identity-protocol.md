@@ -1015,6 +1015,51 @@ Detected anomalies are reported to the flagging system (Section 4.4), creating a
 
 The structured nature of Elpis agent content is itself a security advantage: it reduces the attack surface from an arbitrary HTML document (unbounded complexity) to a defined JSON schema (bounded, validatable). This does not eliminate risk, but it transforms the problem from "defend against anything" to "validate against a specification" — a fundamentally more tractable security posture.
 
+#### 10.7.5 False Flagging and Reputation System Abuse
+
+The graduated flagging system (Section 4.4) introduces a meta-attack surface: the flagging mechanism itself can be weaponized. False flagging — the deliberate, malicious reporting of legitimate agents or services — is a well-known problem in reputation systems (review bombing, DMCA abuse, coordinated mass reporting). In the Elpis context, this threat requires specific architectural countermeasures.
+
+**Attack scenarios:**
+
+| Attack | Description | Goal |
+|---|---|---|
+| **Competitive False Flagging** | Provider A flags agents of competitor Provider B | Destroy competitor's trust score and market access |
+| **Coordinated Flag Bombing** | Multiple colluding identities simultaneously flag a legitimate agent | Trigger automatic revocation through volume |
+| **Retaliatory Flagging** | Agent is flagged as retaliation for a legitimate report it filed | Discourage honest flagging through fear of counter-reports |
+| **Sybil-Assisted Flagging** | Attacker creates many low-cost identities solely for flagging purposes | Amplify flagging volume without real trust investment |
+
+**Mitigation: Skin in the Game**
+
+The core defense against false flagging is ensuring that flagging carries a cost proportional to its impact — the flagger must have "skin in the game":
+
+1. **Weighted Flags**: A flag's impact scales with the reporter's trust score, KYC level, and account age. A flag from a newly created identity with no KYC has near-zero weight. A flag from a long-established, KYC-verified provider carries significant weight. This directly counters Sybil attacks: creating many identities provides no amplification if each identity has negligible trust weight.
+
+2. **Flag Stake**: Filing a flag requires a small XRP reserve lock (analogous to the XRPL's owner reserve mechanism). This reserve is returned if the flag is upheld by review, or forfeited if the flag is determined to be malicious. The economic cost makes bulk false flagging expensive.
+
+3. **Reporter Accountability**: Every flag is itself an on-chain credential — the reporter's identity is permanently and publicly linked to the flag. False flagging therefore creates a permanent, auditable record of abuse by the reporter. Repeated false flags degrade the reporter's own trust score.
+
+4. **Graduated Escalation**: The flagging severity levels (Info, Warning, Critical) require increasing authority thresholds:
+
+| Flag Level | Who Can File | Automatic Effect | Review Required? |
+|---|---|---|---|
+| Info | Any Elpis-identified entity | Logged, no restriction | No |
+| Warning | Trust score > 0.5, KYC basic | Limited capabilities | Optional (auto-expires after 30 days) |
+| Critical | Trust score > 0.8, KYC enhanced, OR multi-party consensus | Credential revocation | **Yes** — requires independent review before taking effect |
+
+Critical flags — the only level that triggers revocation — cannot be filed unilaterally by a single entity (unless that entity has exceptionally high trust and KYC). In the general case, critical flags require **multi-party consensus**: at least M-of-N independent reporters must file consistent flags before revocation is triggered. This directly prevents single-actor competitive flagging.
+
+5. **Counter-Flag and Appeal**: A flagged entity can file a counter-flag (appeal) which triggers a review process. During appeal, Warning flags are suspended (capabilities restored pending review). Critical flags remain in effect during appeal — the precautionary principle applies — but the appeal creates an on-chain record that prevents permanent damage from a single false report.
+
+6. **Flag Pattern Analysis**: The network monitors flagging patterns across all participants:
+   - Entity that flags disproportionately many competitors → suspicious
+   - Cluster of new accounts filing simultaneous flags → coordinated attack
+   - Flag immediately following a counter-flag → retaliatory pattern
+   - Entity with high flag-filing rate but low upheld rate → serial false flagger
+
+Detected patterns trigger automatic trust score adjustments for the flagging entity, not the flagged entity.
+
+**The anti-Sybil property of Elpis identity is itself the primary defense.** In anonymous reputation systems, Sybil attacks are devastating because creating fake identities is free. In Elpis, every identity requires: (a) a wallet with XRP reserve, (b) a provider certificate from a certified Provider CA, (c) optionally KYC verification. The cost of creating a credible flagging identity — one whose flags carry meaningful weight — is substantial. And each identity's flagging history is permanent and publicly auditable. This makes false flagging a high-cost, high-risk activity with diminishing returns — the opposite of what an attacker needs for systematic abuse.
+
 ---
 
 ## 11. Conclusion
