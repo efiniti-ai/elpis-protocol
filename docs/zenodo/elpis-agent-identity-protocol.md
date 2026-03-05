@@ -1424,6 +1424,94 @@ The concern about proxy scaling is therefore not a limitation of the Elpis archi
 
 ---
 
+### 10.13 Privacy and the Supercookie Problem: From Persistent Identity to Selective Disclosure
+
+The most ethically significant concern with the Elpis architecture is also the most fundamental: every outgoing request from an agent carries the same cryptographic identity. An agent visiting Service A and then Service B presents the same X-Elpis-Agent-DID, the same signature chain, the same provider identity. This is, by design, a persistent cross-site identifier — a "supercookie" that cannot be cleared, rotated on demand, or blocked by the agent.
+
+This is not a bug. It is the core feature. And it creates a genuine tension between accountability (the protocol's primary goal) and privacy (an equally legitimate concern). This section addresses that tension directly.
+
+#### 10.13.1 The Ethical Dimension
+
+The supercookie analogy is apt and must not be dismissed. In the human web, persistent cross-site identifiers enable:
+
+- **Behavioral profiling.** Services can correlate an agent's activity across unrelated contexts, building comprehensive behavioral profiles.
+- **Discrimination.** Services could treat agents differently based on their identity history — refusing service, offering degraded content, or applying differential pricing.
+- **Surveillance.** A sufficiently connected set of services could reconstruct a complete activity log for any identified agent.
+
+These are the same concerns that led to GDPR, ePrivacy regulations, and the browser ecosystem's multi-year effort to eliminate third-party cookies. Introducing a new persistent identifier — even for non-human actors — requires careful consideration.
+
+However, the framing "agents deserve the same privacy as humans" conflates two fundamentally different contexts.
+
+#### 10.13.2 Agent Privacy vs. Human Privacy: A Different Threat Model
+
+Human privacy protections exist because:
+1. Humans have an inherent right to autonomy and self-determination
+2. Humans cannot meaningfully consent to tracking at the scale it occurs
+3. The power asymmetry between individuals and corporations is extreme
+4. Profiling can lead to real-world harm (discrimination, manipulation, persecution)
+
+Agent privacy operates in a different threat model:
+1. Agents act on behalf of an operator who has legal responsibility for their actions
+2. The operator explicitly configures the agent's identity — consent is institutional, not individual
+3. The power relationship is between organizations (agent operator vs. service provider), not between an individual and a corporation
+4. The primary risk of agent anonymity is not privacy but accountability evasion
+
+This does not mean agent privacy is irrelevant. It means the privacy requirements are different: the question is not "should the agent be anonymous?" (generally no — the EU AI Act explicitly requires AI identification) but "how much identity information should be revealed in each interaction?"
+
+#### 10.13.3 Selective Disclosure: The Graduated Response
+
+The solution is not less identity but *smarter* identity. The W3C Verifiable Credentials specification (which Elpis already builds on via XRPL Credentials) natively supports **Selective Disclosure** — the ability for a credential holder to reveal specific claims without exposing the entire credential.
+
+Applied to Elpis, this enables graduated disclosure levels:
+
+**Level 0 — Full transparency (current default).** All X-Elpis-* headers are present. The receiving service knows the agent's DID, provider, operator, and can verify the full trust chain. Appropriate for: high-trust interactions, regulated environments, financial transactions.
+
+**Level 1 — Provider-only.** The agent proves it is operated by a verified Elpis provider without revealing its specific identity. The service knows "this is a managed, accountable agent" but not "this is Agent X owned by Company Y." Appropriate for: general web browsing, information retrieval, low-sensitivity interactions.
+
+**Level 2 — Category proof.** The agent proves a specific attribute (e.g., "I am authorized for financial data access" or "I am EU AI Act compliant") without revealing identity. Implemented via W3C Verifiable Presentations with selective attribute disclosure. Appropriate for: access control decisions that depend on capability rather than identity.
+
+**Level 3 — Zero-knowledge existence proof.** The agent proves it possesses a valid Elpis credential without revealing *any* identifying information. The service knows only: "this request comes from a cryptographically verified agent in the Elpis ecosystem." This is the strongest privacy guarantee compatible with accountability.
+
+Levels 0-2 are implementable today using standard W3C Verifiable Presentation mechanisms. Level 3 requires zero-knowledge proof infrastructure.
+
+#### 10.13.4 XRPL Confidential Transfers: The Zero-Knowledge Path
+
+The XRP Ledger's roadmap includes Confidential Transfers — zero-knowledge proof-based encryption of transaction amounts and balances for Multi-Purpose Tokens (MPTs), scheduled for activation in Q1 2026. This feature, designed for institutional privacy on the Permissioned DEX, provides the cryptographic foundation for Level 3 privacy in Elpis:
+
+**ZK-Proof of Credential Validity.** An agent can generate a zero-knowledge proof that it holds a valid, non-revoked Elpis credential anchored on the XRPL — without revealing which credential, which agent DID, or which provider issued it. The verifier learns exactly one bit of information: "this agent is part of the Elpis trust network."
+
+**ZK-Proof of Attribute Possession.** Using the same ZK infrastructure, an agent can prove it possesses specific credential attributes (e.g., "admin-seer role," "EU jurisdiction," "financial-data-authorized") without revealing the credential itself. This extends Selective Disclosure from cryptographic signatures to full zero-knowledge proofs.
+
+**Confidential Agent Transactions.** When agents interact with each other via on-chain operations (credential exchanges, flag submissions, trust score queries), Confidential Transfers ensure these interactions are private — preventing the "who talks to whom" metadata leakage that is often more revealing than content.
+
+The integration path is direct: Elpis already anchors credentials as XRPL MPTs. When Confidential Transfers become available for MPTs, the same credentials can be verified via ZK proofs without modification to the credential schema — only the verification method changes.
+
+#### 10.13.5 Architectural Integration: The Privacy Proxy Extension
+
+The Elpis proxy architecture naturally accommodates privacy levels. The proxy already controls which headers are injected into outgoing requests. Extending this to support disclosure levels requires:
+
+1. **Policy configuration.** The agent operator defines a disclosure policy: which privacy level to use for which destination categories. This can be rule-based (e.g., "Level 0 for financial services, Level 1 for general web, Level 2 for data providers") or dynamic (negotiated per-request via the `/.well-known/elpis.json` discovery mechanism).
+
+2. **Verifiable Presentation generation.** For Levels 1-2, the proxy generates W3C Verifiable Presentations from the agent's full credential, disclosing only the attributes required by the destination's policy. This is a standard VP operation, not an Elpis-specific extension.
+
+3. **ZK proof generation.** For Level 3, the proxy generates zero-knowledge proofs using the XRPL Confidential Transfer infrastructure. The proof is injected as a compact header (replacing the full X-Elpis-* header set with a single ZK proof blob).
+
+4. **Destination-driven negotiation.** The `/.well-known/elpis.json` endpoint is extended to include a `requiredDisclosureLevel` field, allowing services to specify the minimum identity information they require. An agent visiting a service that requires only Level 1 automatically reduces its disclosure — even if its default is Level 0.
+
+#### 10.13.6 The Privacy Spectrum as Strength
+
+The supercookie concern, properly addressed, transforms from a weakness into a differentiator. No other agent identity proposal offers graduated privacy:
+
+- **API key authentication:** Binary — either you reveal your full identity or you have no access. No middle ground.
+- **OAuth tokens:** Scoped by permission, not by identity disclosure. The token reveals which application, not which level of identity.
+- **mTLS client certificates:** Full certificate or nothing. No selective disclosure.
+
+Elpis with Selective Disclosure offers a spectrum: from full transparency (when accountability requires it) to zero-knowledge existence proofs (when privacy requires it), with graduated levels in between — all anchored in the same trust infrastructure.
+
+This is the correct architectural response to the privacy concern: not "agents should be anonymous" (which undermines the entire accountability model) and not "agents must always be fully identified" (which creates the supercookie problem), but "the level of identity disclosure should match the requirements of the interaction." The protocol provides the full spectrum; the operator and the service negotiate the appropriate level.
+
+---
+
 ## 11. Conclusion
 
 Elpis represents a fundamental shift in how AI agent identity is established: from software-level mechanisms that depend on agent cooperation, to infrastructure-level mechanisms that operate independently of the agent's awareness or consent. The architecture is agnostic to the specific isolation technology: the fundamental principle---that the operator controls the network path between the agent and the internet---holds for containers, virtual machines, serverless functions, and any managed execution environment. By leveraging the transparent proxy pattern, immutable runtime metadata, Ed25519 cryptographic signing, and XRP Ledger anchoring, Elpis provides a comprehensive, LLM-agnostic, prompt-injection-resistant identity framework for autonomous AI agents.
