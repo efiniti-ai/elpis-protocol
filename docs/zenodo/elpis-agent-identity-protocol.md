@@ -1140,6 +1140,98 @@ This is not a centralization weakness — it is how trust scales in every domain
 
 The provider economy is not an obstacle to Elpis adoption. It is the mechanism through which adoption occurs.
 
+### 10.9 Governance and Progressive Decentralization
+
+Section 4.2 describes the Root CA as a multi-signature entity. A natural concern is that during the bootstrap phase, the Root CA is operated by a small number of initial signers — creating a centralization risk. This section addresses the governance model that evolves the Root CA from a bootstrapped trust anchor to a progressively decentralized institution.
+
+#### 10.9.1 The Bootstrap Problem
+
+Every trust system faces the same bootstrap challenge: the first participants must trust each other before the system can generate trust. TLS had the browser vendors' pre-installed CA lists. DNS had the IANA root zone. Bitcoin had Satoshi's genesis block. The XRPL had Ripple's initial Unique Node List (UNL).
+
+Elpis faces the same challenge. The initial Root CA signers must be chosen before any trust metrics exist. This is not a flaw — it is a necessary property of trust system bootstrapping. The question is not "how to avoid bootstrapping" but "how to ensure the bootstrapped system decentralizes over time."
+
+#### 10.9.2 XRPL Permissioned Domains as Architectural Solution
+
+The XRPL's Permissioned Domains feature (XLS-80) provides a ledger-native mechanism that fundamentally changes the Root CA's role:
+
+**Without Permissioned Domains (hierarchical model):**
+```
+Root CA  →  certifies  →  Provider CA  →  certifies  →  Agent
+           (gatekeeper)                  (delegated)
+```
+
+The Root CA is a gatekeeper: every provider certification flows through it.
+
+**With Permissioned Domains (federated model):**
+```
+Root CA  →  admits  →  Provider Domain (autonomous on-chain)
+          (registry)        ├── certifies agents autonomously
+                            ├── revokes agents autonomously
+                            ├── manages flags autonomously
+                            └── no Root CA involvement for daily operations
+```
+
+The Root CA becomes a registry — analogous to ICANN's role in DNS. It decides *who participates* but not *what participants do within their domain*. A provider with an established Permissioned Domain on the XRPL operates with full autonomy: certifying agents, revoking compromised agents, managing trust scores — all without contacting the Root CA.
+
+This architectural shift has three critical properties:
+1. **Operational independence**: Provider outages do not cascade to the Root CA. Root CA unavailability does not prevent providers from operating.
+2. **Blast radius containment**: A compromised provider can only damage agents within its own domain. Cross-domain contamination requires Root CA compromise.
+3. **Governance simplification**: The Root CA's governance scope is reduced from "all operations" to "admission and exclusion" — a much smaller and more auditable decision space.
+
+#### 10.9.3 Progressive Decentralization Path
+
+The governance model evolves through four phases:
+
+**Phase 1 — Bootstrap (current):**
+- 3-5 initial signers with direct trust relationships
+- All signers are founding entities with demonstrated commitment
+- Admission by unanimous consent
+- Focus: establish the technical infrastructure and first provider certifications
+
+**Phase 2 — Early Growth:**
+- 8-12 signers including the first independent providers
+- Admission by supermajority vote (e.g., 75% of existing signers)
+- Candidates must demonstrate: operational track record (minimum 6 months), successful audit (technical and compliance), no active critical flags against their agents
+- Probationary period: new signers have reduced voting weight for the first 12 months
+
+**Phase 3 — Established Network:**
+- 15-32 signers (XRPL SignerList maximum) spanning multiple jurisdictions, industries, and organizational types
+- Anti-dominance rule: maximum 3 signers per provider organization, with weighted voting to prevent single-entity control
+- Mandatory periodic re-certification (annual audit)
+- Signer removal by supermajority vote for demonstrated misconduct
+
+**Phase 4 — Institutional Maturity:**
+- Signer composition includes: commercial providers, academic institutions, standards bodies, and optionally national regulatory authorities (BSI, ANSSI, ENISA)
+- Governance framework documented in a public charter
+- For scale beyond the 32-signer XRPL limit: layered multi-signature schemes (regional sub-CAs with their own SignerLists) or off-chain governance voting with on-chain anchoring of decisions
+
+#### 10.9.4 Regulatory Authorities as Trust Anchors
+
+A distinctive opportunity for Elpis governance is the potential inclusion of national cybersecurity or AI oversight authorities as Root CA signers. This would create a unique hybrid model:
+
+- **Not state-controlled**: Regulatory authorities would be signers among many, not sole authorities. They cannot unilaterally revoke providers or agents.
+- **Regulatory legitimacy**: Their participation signals institutional endorsement of the trust framework.
+- **Cross-jurisdictional trust**: A Root CA signed by BSI (Germany), ANSSI (France), and NIST (USA) carries inherent cross-border legitimacy.
+- **Precedent**: This mirrors the WebTrust audit model where independent auditors (including government-adjacent bodies) certify CAs.
+
+Inclusion of regulatory signers is optional and additive — the system functions without them, but benefits from their participation when available.
+
+#### 10.9.5 The DNS Parallel
+
+The evolution described above mirrors the governance history of DNS:
+
+| DNS | Elpis |
+|---|---|
+| IANA (initial, single entity) | Founding signers (bootstrap) |
+| ICANN (multi-stakeholder governance) | Root CA with diverse SignerList |
+| ccTLDs (national autonomy) | Provider Permissioned Domains |
+| Registrars (operational) | Providers (agent management) |
+| DNSSEC (cryptographic integrity) | XRPL anchoring (cryptographic integrity) |
+
+DNS began as a centralized system operated by a single person (Jon Postel). Today it is governed by a multi-stakeholder organization with global participation. The path from centralized bootstrap to decentralized governance is well-understood — the challenge is executing it deliberately rather than waiting for crises to force structural changes.
+
+Elpis benefits from designing the decentralization path into the protocol from the beginning, rather than retrofitting governance structures onto an already-entrenched centralized system.
+
 ---
 
 ## 11. Conclusion
