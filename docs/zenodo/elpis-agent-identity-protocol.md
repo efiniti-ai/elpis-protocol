@@ -1364,6 +1364,66 @@ The historical pattern is clear: infrastructure protocols succeed when technolog
 
 ---
 
+### 10.12 Proxy Scaling and Protocol Evolution: From Interception to Native Integration
+
+A legitimate engineering concern with the current Elpis architecture is the computational cost of TLS interception (SSL Bump). Every HTTPS request from an agent requires the proxy to terminate the TLS session, inject identity headers, and re-establish a new TLS session to the destination — effectively doubling the cryptographic overhead per request. At scale, this represents a non-trivial CPU and latency burden.
+
+This concern is real but mischaracterizes the nature of the problem. SSL Bump is the *current implementation mechanism*, not an architectural requirement. The Elpis architecture requires exactly one thing: that cryptographic identity headers are present in every outgoing HTTP request from an agent's execution environment. How those headers arrive in the request is an implementation detail — and one with a clear evolutionary path.
+
+#### 10.12.1 The Performance Objection in Historical Context
+
+Every major infrastructure protocol has faced the same objection at inception:
+
+- **HTTPS (1995):** "SSL handshakes are too expensive for every connection." Today, TLS 1.3 completes a handshake in a single round-trip (0-RTT for resumed sessions), hardware AES-NI instructions make encryption effectively free, and HTTPS is the default for all web traffic. The "performance problem" was solved by hardware evolution, protocol optimization, and dedicated silicon.
+
+- **DNS over HTTPS (2018):** "Encrypting every DNS query adds unacceptable latency." Today, DoH is a standard browser feature with negligible performance impact, enabled by persistent connections and connection pooling.
+
+- **mTLS in service meshes (2017):** "Mutual TLS between every microservice is too expensive." Today, Istio and Linkerd handle mTLS transparently for millions of production services, optimized through connection pooling, certificate caching, and eBPF-accelerated data paths.
+
+The pattern is consistent: performance objections to security infrastructure are valid at launch and irrelevant within 5-10 years. The computational cost of Ed25519 signature generation (Elpis's core operation) is approximately 50 microseconds — orders of magnitude cheaper than the TLS operations it currently piggybacks on.
+
+#### 10.12.2 Near-Term Optimizations
+
+Even within the current SSL Bump architecture, significant optimizations are available:
+
+1. **Connection pooling and session resumption.** The proxy can maintain persistent TLS sessions to frequently accessed destinations, amortizing handshake costs across multiple requests. TLS 1.3 session tickets reduce resumed handshakes to near-zero overhead.
+
+2. **Selective interception.** Not every destination requires identity injection. The proxy can maintain an allowlist of Elpis-aware services (discoverable via `/.well-known/elpis.json`) and pass through traffic to non-Elpis destinations without interception. This reduces SSL Bump operations to only those requests where identity will actually be verified.
+
+3. **Hardware acceleration.** Modern server CPUs include AES-NI and AVX-512 instructions that make TLS operations nearly free. Dedicated TLS offload hardware (SmartNICs, DPUs) can handle interception entirely in the network path, removing CPU overhead from the proxy process.
+
+4. **Horizontal scaling.** The proxy is stateless — agent identity is derived from runtime metadata and cached credentials, not from proxy-local state. Multiple proxy instances can serve the same agent pool behind a load balancer with no coordination overhead.
+
+#### 10.12.3 The Evolutionary Path: Protocol-Native Identity
+
+The deeper answer to the scaling concern is that SSL Bump is a transitional mechanism. The Elpis header schema (X-Elpis-*) is designed to be transport-agnostic — the headers are standard HTTP headers that can be injected by any mechanism, not only TLS interception. Several evolutionary paths lead to native integration:
+
+**TLS Extensions.** The TLS protocol supports custom extensions (RFC 8446, Section 4.2). An Elpis TLS extension could carry agent identity information directly in the TLS handshake, making it available to the server before the first HTTP byte is sent — without requiring interception. This is analogous to Server Name Indication (SNI), which was added to TLS to solve a similar "how do we convey metadata about the client before the application layer" problem.
+
+**HTTP/3 and QUIC.** HTTP/3's QUIC transport provides a natural injection point. QUIC's connection-level metadata and early data mechanisms could carry Elpis identity as part of the transport setup, eliminating the need for header injection entirely. The proxy would participate in the QUIC handshake rather than intercepting TLS.
+
+**Proxy Protocol extensions.** HAProxy's Proxy Protocol (v2) already carries connection metadata (source IP, TLS parameters) through proxy chains. A Proxy Protocol v3 or custom TLV extension could carry Elpis identity fields, allowing standard reverse proxies and load balancers to propagate agent identity without application-layer modification.
+
+**IETF standardization.** The X-Elpis-* headers could evolve into an IETF RFC — similar to how X-Forwarded-For became the standardized Forwarded header (RFC 7239). A standardized Agent-Identity header would allow web servers, CDNs, and API gateways to natively recognize agent identity without any Elpis-specific integration.
+
+#### 10.12.4 The Symbiosis Model
+
+The most likely evolution is not replacement but symbiosis: Elpis identity injection coexists with and gradually migrates into native protocol support.
+
+**Phase 1 — Proxy injection (current).** SSL Bump provides universal coverage with no changes required to agents, servers, or protocols. This is the bootstrap mechanism — it works today with existing infrastructure.
+
+**Phase 2 — Hybrid.** Elpis-aware HTTP libraries and agent frameworks natively inject X-Elpis-* headers, eliminating the need for TLS interception for cooperative agents. The proxy continues to serve as a fallback for unmodified agents, ensuring the "infrastructure-level" guarantee is maintained. This phase is analogous to the period when both HTTP and HTTPS coexisted, with gradual migration.
+
+**Phase 3 — Protocol-native.** TLS extensions or HTTP/3 metadata carry agent identity as a standard protocol feature. The proxy's role shifts from active interception to passive verification — confirming that the identity claimed by the agent matches the identity expected from its runtime environment. This is the "TLS certificate" endgame: identity is part of the protocol, not bolted on.
+
+**Phase 4 — Infrastructure default.** Cloud providers, container orchestrators, and serverless platforms include agent identity as a built-in feature — just as they include TLS termination today. The proxy becomes invisible, absorbed into the platform's network stack.
+
+This evolution does not require any changes to the Elpis core architecture. The trust model (CA hierarchy, XRPL anchoring, credential verification) remains identical regardless of whether identity is injected by a proxy, by an HTTP library, by a TLS extension, or by the platform itself. The *what* (cryptographic agent identity in every request) is permanent; the *how* (injection mechanism) evolves with the protocol landscape.
+
+The concern about proxy scaling is therefore not a limitation of the Elpis architecture but a snapshot of its current implementation — an implementation that already has a clear optimization path and a natural evolution toward protocol-native integration. The history of internet infrastructure consistently shows that today's performance concern becomes tomorrow's solved problem.
+
+---
+
 ## 11. Conclusion
 
 Elpis represents a fundamental shift in how AI agent identity is established: from software-level mechanisms that depend on agent cooperation, to infrastructure-level mechanisms that operate independently of the agent's awareness or consent. The architecture is agnostic to the specific isolation technology: the fundamental principle---that the operator controls the network path between the agent and the internet---holds for containers, virtual machines, serverless functions, and any managed execution environment. By leveraging the transparent proxy pattern, immutable runtime metadata, Ed25519 cryptographic signing, and XRP Ledger anchoring, Elpis provides a comprehensive, LLM-agnostic, prompt-injection-resistant identity framework for autonomous AI agents.
