@@ -1232,6 +1232,74 @@ DNS began as a centralized system operated by a single person (Jon Postel). Toda
 
 Elpis benefits from designing the decentralization path into the protocol from the beginning, rather than retrofitting governance structures onto an already-entrenched centralized system.
 
+### 10.10 Ledger Independence and the Case for XRPL
+
+Elpis anchors agent identity on the XRP Ledger. This is a deliberate, empirically motivated choice — not an architectural constraint. This section separates the protocol's ledger-specific implementation from its ledger-independent principles, and justifies the selection of XRPL as the anchoring layer.
+
+#### 10.10.1 What Elpis Requires from a Ledger
+
+The identity anchoring layer must provide the following properties:
+
+| Requirement | Purpose |
+|---|---|
+| Verifiable Credentials (native) | Store agent certificates, flags, compliance status without smart contracts |
+| Multi-Purpose Tokens | Per-agent identity tokens with issuance and revocation |
+| Multi-Signature accounts | Root CA governance with M-of-N threshold |
+| Permissioned Domains | Provider autonomy with domain-scoped operations |
+| Fast finality (< 10 seconds) | Revocation must propagate within seconds, not minutes |
+| Low transaction cost | Identity operations (certification, flagging) must be economically viable at scale |
+| Public verifiability | Any third party can verify an agent's identity without permission |
+| Operational track record | Production stability over years, not months |
+
+#### 10.10.2 Why XRPL
+
+At the time of writing, the XRP Ledger is the only distributed ledger technology that satisfies all requirements natively — without smart contract development:
+
+- **Credentials (XLS-70)**: Native on-chain Verifiable Credentials, purpose-built for the use case. No Solidity, no WASM, no contract deployment.
+- **Multi-Purpose Tokens (XLS-33)**: Native token issuance with per-holder properties. Agent identity tokens are first-class ledger objects.
+- **Permissioned Domains (XLS-80)**: Provider-scoped domains with autonomous credential management — the architectural foundation for decentralized governance (Section 10.9).
+- **Multi-Signing**: Native SignerList with weighted quorum, supporting up to 32 signers.
+- **3-5 second finality**: Consensus-based (not proof-of-work), deterministic finality. Revocation is globally visible within one ledger close.
+- **Negligible transaction costs**: Current reserve requirements and transaction fees make identity operations economically viable even at millions of agents.
+- **12+ years of operation**: The XRPL has operated continuously since 2012 with no security breaches, no rollbacks, and no unplanned downtime — a track record unmatched by most distributed ledger networks.
+- **Financial sector trust**: XRPL is used in production by financial institutions for cross-border payments, providing institutional credibility that extends to identity use cases.
+
+No alternative DLT known to the authors provides this combination of features without requiring smart contract development. Ethereum and its L2 networks offer programmability but require custom smart contracts for credential management, carry variable and potentially high gas costs, and provide probabilistic rather than deterministic finality. Hyperledger networks are permissioned and lack public verifiability. Sovrin/Indy are purpose-built for identity but have limited adoption and an uncertain operational future.
+
+#### 10.10.3 Architectural Ledger Independence
+
+While the implementation uses XRPL, the Elpis architecture is designed with a clean separation between the identity mechanism and the anchoring layer:
+
+```
+Elpis Proxy / Gateway
+        │
+        ▼
+┌─────────────────────┐
+│  Credential Store   │  ← Abstract interface
+│  (read/write/revoke)│
+└────────┬────────────┘
+         │
+    ┌────┴────┐
+    │ Adapter │
+    └────┬────┘
+         │
+    ┌────┴────────┐
+    │ XRPL        │  ← Current implementation
+    │ (or future  │
+    │  alternative)│
+    └─────────────┘
+```
+
+The Proxy and Gateway components interact with a **Credential Store abstraction**, not with XRPL APIs directly. This store exposes operations: `certify`, `revoke`, `query`, `subscribe` — operations that any suitable DLT could implement. Replacing the XRPL adapter with an adapter for a different ledger is an engineering task (estimated weeks, not months), not an architectural redesign.
+
+This separation is not hypothetical — it is a natural consequence of the caching architecture described in Section 3.6. The proxy already operates against a Redis cache, not against the ledger directly. The ledger is the source of truth, but it is accessed through a synchronization layer that can be retargeted.
+
+#### 10.10.4 The Pragmatic Position
+
+Elpis is committed to XRPL because it is the best available technology for the purpose — not because the protocol requires it architecturally. Should a future DLT emerge that offers equivalent or superior properties, migration is possible without changing the core protocol (proxy, signing, headers, trust model). The identity is in the infrastructure; the ledger is the trust anchor. Trust anchors can be moved — the infrastructure persists.
+
+This is analogous to how TLS certificates can be issued by different CAs without changing the TLS protocol itself. The protocol defines what a certificate must contain; the CA ecosystem determines who issues them. Elpis defines what an identity anchor must provide; the ledger ecosystem determines where it is stored.
+
 ---
 
 ## 11. Conclusion
