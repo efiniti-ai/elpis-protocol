@@ -21,7 +21,7 @@ We present the Elpis Protocol, a novel approach to establishing cryptographicall
 
 The core innovation consists of five interdependent components: (1) a transparent forward proxy that intercepts all outgoing HTTP/HTTPS traffic from isolated AI agent environments via standard HTTP_PROXY/HTTPS_PROXY environment variables, (2) immutable runtime metadata (container labels, pod annotations, VM properties, or equivalent mechanisms in any isolation technology) that serves as an identity bridge between the runtime environment and the cryptographic identity system, (3) Ed25519 digital signatures computed over a canonical string representation of each HTTP request, (4) a standardized HTTP header schema (X-Elpis-*) for embedding agent identity information in every outgoing request, and (5) anchoring of agent identity, certificates, and revocation status on the XRP Ledger using W3C Decentralized Identifiers (DIDs), Multi-Purpose Tokens (MPTs), and Verifiable Credentials.
 
-The system implements what we term the "Passport Model" — agents retain full, unrestricted internet access while every packet leaving their execution environment is cryptographically stamped with their identity. This stands in contrast to the "Prison Model" employed by conventional approaches, which restrict agent network access. Our approach is LLM-agnostic (identity is bound to the runtime environment, not the AI model), prompt-injection-resistant (identity exists in infrastructure, not in software), and provides compliance-by-design for the EU AI Act through immutable audit trails and instant on-chain revocation.
+The system implements what we term the "Passport Model" — agents retain full internet access while every HTTP-layer request leaving their execution environment is cryptographically stamped with their identity, enforced through network-level isolation (firewall rules, network namespace policies) rather than agent cooperation. This stands in contrast to the "Prison Model" employed by conventional approaches, which restrict agent network access. Our approach is LLM-agnostic (identity is bound to the runtime environment, not the AI model), prompt-injection-resistant (identity exists in infrastructure, not in software), and provides compliance-by-design for the EU AI Act through immutable audit trails and instant on-chain revocation.
 
 We describe the complete architecture including a three-tier certificate authority (Root CA, Provider CA, Agent Certificates), a four-tier user identity chain of trust, bidirectional flagging with on-chain propagation, and gateway validation achieving sub-5ms latency. The system has been implemented and deployed in a production multi-agent environment with 12+ autonomous AI agents, validated through end-to-end testing where agents visit web services and are automatically identified without any login mechanism.
 
@@ -206,7 +206,7 @@ Elpis implements what we term the "Passport Model" of agent identity:
 **Passport Model (adopted):**
 - Agent retains full, unrestricted internet access
 - Agent can install software, call any API, use any service
-- Every packet leaving the agent's environment carries the agent's identity stamp
+- Every HTTP/HTTPS request leaving the agent's environment carries the agent's identity stamp (non-HTTP traffic is logged at connection level for audit purposes)
 - The identity neither restricts nor enables — it identifies
 - Analogous to a passport: enables travel while providing identification
 
@@ -280,9 +280,15 @@ The recommended approach is to bake these configurations into the base container
 
 The read-only mount ensures that even a compromised agent running as root cannot tamper with the source certificate — write operations are rejected at the kernel level.
 
-**Graceful degradation:** If TLS interception fails for any reason (certificate pinning, unsupported TLS extension), the proxy falls back to a plain CONNECT tunnel. The request passes through without identity headers but is still logged in the audit trail with connection-level metadata (source DID, destination host, timestamp). The Passport Model is preserved: communication is never blocked.
+**Graceful degradation and enforcement modes:** The proxy supports two configurable behaviors when TLS interception fails (e.g., certificate pinning, unsupported TLS extension):
 
-**Protocol coverage:** With SSL Bump enabled, Elpis covers >99% of autonomous AI agent communication:
+- **Permissive mode (default):** The proxy falls back to a plain CONNECT tunnel. The request passes through without identity headers but is logged in the audit trail with connection-level metadata (source DID, destination host, timestamp, failure reason). Communication is never blocked. This mode prioritizes agent functionality during initial deployment and adoption phases.
+
+- **Strict mode:** The proxy rejects connections where identity injection fails. This ensures the invariant that every HTTP-layer request carries identity headers — at the cost of breaking connectivity to certificate-pinning destinations. Operators can configure per-destination exceptions for known pinning services.
+
+In both modes, the proxy enforces network-level isolation: iptables/nftables rules (or Kubernetes NetworkPolicy / CNI egress rules) ensure that all agent traffic must transit the proxy — direct internet access from agent containers is blocked at the kernel level, not merely discouraged by environment variables. The `HTTP_PROXY`/`HTTPS_PROXY` variables direct cooperative clients; the firewall rules catch non-cooperative ones.
+
+**Protocol coverage:** With SSL Bump enabled, Elpis covers the vast majority of autonomous AI agent communication. In the reference deployment (12+ agents, 30-day observation period), HTTP/HTTPS traffic constituted over 99% of all outgoing connections, consistent with the HTTP-centric nature of modern AI agent toolchains (REST APIs, WebSocket, gRPC, MCP):
 
 | Protocol | Mechanism | Coverage |
 |---|---|---|
@@ -597,7 +603,7 @@ If the infrastructure operator's host is fully compromised (root access to the m
 
 The agent cannot bypass the identity injection because:
 
-1. **No direct network route**: The HTTP_PROXY/HTTPS_PROXY environment variables route all HTTP traffic through the proxy. While the agent could theoretically clear these variables, production deployments additionally enforce routing through iptables rules at the host level, container runtime network plugins, or firewall rules (applicable across Docker, Podman, LXC, Kubernetes, and any container runtime with network namespace isolation).
+1. **No direct network route**: Network-level enforcement ensures all traffic transits the proxy regardless of agent behavior. The enforcement is layered: (a) `HTTP_PROXY`/`HTTPS_PROXY` environment variables direct cooperative clients, (b) iptables/nftables rules at the host level block all direct outbound traffic from agent network namespaces except to the proxy endpoint (e.g., `iptables -A OUTPUT -m owner --uid-owner agent -j DROP` combined with `-A OUTPUT -d proxy-ip -p tcp --dport 8080 -j ACCEPT`), and (c) in Kubernetes environments, CNI NetworkPolicy or egress gateway configurations provide equivalent enforcement. Even if an agent clears proxy environment variables or uses raw sockets, the kernel-level firewall rules prevent direct internet access.
 2. **No runtime API access**: The agent has no access to the container runtime daemon (Docker socket, Kubernetes API, LXC API, Proxmox API) and cannot modify its own metadata, network configuration, or container settings. This is a fundamental property of container isolation, not specific to any single runtime.
 3. **No key access**: The Ed25519 signing keys are stored in the proxy's key store (Redis or equivalent), not in the agent's container.
 4. **Audit trail**: Even if the proxy fails, the absence of expected headers is itself a signal that can trigger alerts.
@@ -611,7 +617,7 @@ Elpis does not replace existing authentication and authorization standards. It f
 | Standard | Relationship to Elpis |
 |---|---|
 | **OAuth 2.0** | Elpis provides the identity layer under OAuth. Three integration paths: custom JWT claim, identity provider, mutual TLS (RFC 8705) |
-| **MFA** | Elpis provides cryptographic MFA equivalent for agents: private key (knowledge) + certificate (possession) + XRPL anchor (inherence) |
+| **MFA** | Elpis provides a multi-layer cryptographic trust equivalent for agents: private key (knowledge factor) + certificate chain (possession factor) + immutable XRPL anchor (public verifiability factor) |
 | **OpenID Connect** | Elpis can function as an OIDC identity provider |
 | **SAML 2.0** | Elpis certificates can be embedded as SAML attributes |
 | **W3C DIDs/VCs** | Elpis builds natively on W3C DID Core v1.0 and Verifiable Credentials v2.0 |
@@ -694,7 +700,31 @@ W3C DIDs [2] and Verifiable Credentials [3] provide the foundational standards f
 
 Google's BeyondCorp [12] established the principle that network location should not grant implicit trust. NIST SP 800-207 [13] formalized Zero Trust Architecture (ZTA) principles. Elpis aligns with ZTA philosophy — every request carries proof of identity regardless of network origin — but extends it to a class of actors (autonomous AI agents) that ZTA was not designed to address. Traditional ZTA assumes human users authenticating through identity providers; Elpis provides the equivalent identity mechanism for non-human autonomous actors.
 
-### 9.5 Emerging Standardization
+### 9.5 HTTP Message Signatures and Request Signing Standards
+
+The IETF HTTP Message Signatures specification (RFC 9421) defines a standardized mechanism for signing HTTP requests and responses using existing HTTP semantics. The specification addresses canonicalization, signature base construction, and key binding — problems that overlap with Elpis's canonical string construction (Section 3.1).
+
+Elpis deliberately does not adopt HTTP Message Signatures for several architectural reasons: (1) RFC 9421 is designed for application-level signing where the signer is the HTTP client or server — Elpis signs at the infrastructure level where the proxy, not the agent, is the signer; (2) the specification assumes the signer has access to the application's HTTP context, while the Elpis proxy operates on intercepted traffic and must construct signatures from the proxied request; (3) Elpis's header schema carries agent identity metadata (DID, provider, trust chain) that has no equivalent in RFC 9421's signature parameters.
+
+However, Elpis's canonicalization approach would benefit from adopting RFC 9421's rigor in specifying signature base construction, particularly regarding URL normalization, header field ordering, and handling of duplicate headers. A future revision of the Elpis specification should either formally adopt RFC 9421 components or provide an equally normative canonicalization specification.
+
+### 9.6 Alternative DID Methods and Trust Anchors
+
+The choice of `did:xrpl` as Elpis's DID method warrants comparison with alternatives:
+
+| DID Method | Trust Anchor | Revocation Speed | Public Verifiability | Operational Cost |
+|---|---|---|---|---|
+| `did:xrpl` (Elpis) | XRPL public ledger | ~5s (ledger finality) | Full (public ledger) | Low (reserve + tx fees) |
+| `did:web` | DNS + HTTPS | Minutes–hours (DNS TTL) | Partial (server availability) | Hosting costs |
+| `did:key` | None (self-certifying) | Not revocable | Full (no resolution needed) | None |
+| `did:ion` | Bitcoin | ~60 min (block finality) | Full (public ledger) | High (Bitcoin tx fees) |
+| `did:ethr` | Ethereum | ~15s (block finality) | Full (public ledger) | Variable (gas fees) |
+
+`did:web` is the simplest and most widely adopted method, anchoring DIDs to web domains via HTTPS. For Elpis, `did:web` is insufficient because: (a) revocation depends on DNS TTL propagation (minutes to hours vs. XRPL's 3-5 seconds), (b) availability depends on the DID controller's web server (a single point of failure), and (c) there is no inherent tamper-evidence — a compromised server can silently alter DID documents. `did:key` provides no revocation mechanism at all. `did:ion` offers strong guarantees but with 60-minute finality, which is unacceptable for real-time agent identity revocation.
+
+Sigstore (Fulcio/Rekor) offers an alternative model: ephemeral certificates with transparency log entries. This approach is well-suited for software artifact signing but lacks the persistent identity semantics required for agents that operate continuously and need stable, long-lived identities with real-time revocation capability.
+
+### 9.7 Emerging Standardization
 
 The field of AI agent identity is converging rapidly. The W3C AI Agent Protocol Community Group (established May 2025) is developing standards for agent interoperability, including identity aspects [14]. An IETF Internet-Draft on security considerations for AI agents (Sogomonian, September 2025) addresses authentication and authorization challenges [15]. These efforts validate the problem space Elpis addresses. Elpis contributes a concrete, implemented solution — particularly the transparent proxy injection pattern and infrastructure-level identity binding — that complements these emerging standards rather than competing with them.
 
