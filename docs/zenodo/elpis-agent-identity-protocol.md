@@ -942,6 +942,79 @@ The key differentiator is identity-gating: unlike RSS (public), AMP (public), or
 
 In all cases, the existing website continues to serve human visitors unchanged. The agent-optimized content layer is additive, not disruptive.
 
+### 10.7 Security Considerations for Agent-Optimized Content
+
+Section 10.6 introduces a new interaction surface between services and AI agents. This surface creates attack vectors that must be analyzed — not because Elpis introduces them (they exist today in unstructured form), but because a responsible protocol specification must address them explicitly.
+
+#### 10.7.1 Threat Landscape
+
+Four categories of attack are relevant when services deliver structured content to AI agents:
+
+| Attack | Description | Severity |
+|---|---|---|
+| **Context Pollution** | Service delivers manipulated facts (false prices, misleading descriptions, hidden bias signals) in structured content fields | High |
+| **Context Bombing** | Service delivers excessively large payloads (thousands of actions, megabyte-length descriptions) to exhaust the agent's token budget | Medium |
+| **Prompt Injection** | Service embeds LLM instructions in content fields (`description`, `actions`) to hijack the agent's behavior | Critical |
+| **Social Phishing** | Service designs actions to extract sensitive user data (credentials, payment information, personal data) from the agent | High |
+
+#### 10.7.2 Why Elpis Improves the Status Quo
+
+All four attack vectors exist today — and are strictly worse without Elpis:
+
+**Without Elpis (current state):** An AI agent scraping a website receives an unstructured HTML blob from an anonymous source. The agent has no mechanism to verify the source's identity, no structured channel to validate content, and no recourse if the content is malicious. The attacker is anonymous and untraceable.
+
+**With Elpis:** Every content delivery is cryptographically attributable to a verified service identity on the XRPL. Malicious content triggers flagging, trust score degradation, and potential credential revocation. The structured format enables schema validation *before* content reaches the LLM. Bidirectional identity (Section 10.5) allows the agent to verify the service's trust level before processing content.
+
+The key insight: **Elpis does not eliminate these attacks — it makes them attributable and punishable.** This transforms the game theory: anonymous attacks have zero cost; attacks from a verifiable identity carry reputational, economic, and legal consequences.
+
+#### 10.7.3 Mitigation Architecture
+
+**Schema Validation Layer:** Agent-optimized content responses must conform to a strict JSON schema. Before any content reaches the LLM, a validation layer enforces:
+- Maximum payload size (recommended: 10KB for `application/elpis+json` responses)
+- Maximum array lengths (e.g., `actions` limited to 20 entries)
+- Maximum string lengths per field (e.g., `description` limited to 2000 characters)
+- Allowed field names (reject unknown fields that might carry injection payloads)
+- Type enforcement (prices must be numbers, URLs must be valid URIs)
+
+Payloads exceeding these limits are rejected with a structured error response, and the violation is logged for potential flagging.
+
+**Data/Instruction Separation:** The most critical mitigation against prompt injection is architectural separation of data and instructions. Content from `elpis+json` responses must be treated as **untrusted data** — never concatenated directly into the LLM prompt. Recommended patterns:
+- Place Elpis content in a clearly delimited data section with explicit boundary markers
+- Use the LLM's tool/function calling interface to pass structured data rather than embedding it in the conversation
+- Apply content sanitization (strip control characters, escape sequences, instruction-like patterns) to all string fields
+
+**Trust-Gated Data Release:** Sensitive user actions (payment, personal data submission) require trust verification of the receiving service:
+
+| Action Type | Required Service Trust Level |
+|---|---|
+| Navigation, browsing | Any Elpis-identified service |
+| Add to cart, wishlist | Trust score > 0.5 |
+| Payment, checkout | Trust score > 0.8 + KYC-verified provider |
+| Personal data submission | Trust score > 0.9 + KYC-verified + no active flags |
+
+The trust thresholds are configurable by the agent provider and the user, allowing risk-appropriate policies.
+
+**Network-Level Abuse Detection:** The Elpis proxy — which sees all agent-to-service interactions — can detect abuse patterns:
+- Repeated large payloads from the same service (context bombing)
+- Content that triggers prompt injection detection heuristics
+- Services that request disproportionate amounts of user data relative to their stated purpose
+- Sudden changes in content structure that deviate from the service's historical pattern
+
+Detected anomalies are reported to the flagging system (Section 4.4), creating a feedback loop: abusive services lose trust, reducing their ability to interact with agents.
+
+#### 10.7.4 Comparison with Unstructured Web Scraping
+
+| Security Property | HTML Scraping (no Elpis) | Elpis Agent Content |
+|---|---|---|
+| Source verification | None (anonymous) | Cryptographic (XRPL DID) |
+| Content validation | Impossible (unstructured) | Schema enforcement (structured JSON) |
+| Injection surface | Entire HTML document | Defined, validatable fields |
+| Abuse attribution | IP-based (easily spoofed) | Identity-based (cryptographically bound) |
+| Abuse consequences | None (anonymous attacker) | Flagging, trust degradation, revocation |
+| Data release control | None (agent decides autonomously) | Trust-gated (policy-enforced thresholds) |
+
+The structured nature of Elpis agent content is itself a security advantage: it reduces the attack surface from an arbitrary HTML document (unbounded complexity) to a defined JSON schema (bounded, validatable). This does not eliminate risk, but it transforms the problem from "defend against anything" to "validate against a specification" — a fundamentally more tractable security posture.
+
 ---
 
 ## 11. Conclusion
