@@ -1,0 +1,33 @@
+{
+  "name": "@elpis-protocol/did-xrpl",
+  "version": "0.1.0",
+  "description": "DID Resolver for the did:xrpl method",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "xrpl": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "typescript": "^5.7.0"
+  },
+  "keywords": [
+    "did",
+    "xrpl",
+    "decentralized-identity",
+    "w3c",
+    "elpis"
+  ],
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,17 @@
+{
+  "name": "elpis-protocol",
+  "private": true,
+  "description": "Infrastructure-Level Cryptographic Identity for Autonomous AI Agents",
+  "workspaces": [
+    "packages/*"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/efiniti-ai/elpis-protocol"
+  },
+  "author": "EFINITI Services GmbH",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=18"
+  }
+}

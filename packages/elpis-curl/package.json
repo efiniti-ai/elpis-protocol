@@ -1,0 +1,28 @@
+{
+  "name": "@elpis-protocol/elpis-curl",
+  "version": "0.1.0",
+  "description": "CLI client for making Elpis Protocol signed HTTP requests",
+  "type": "module",
+  "bin": {
+    "elpis-curl": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@elpis-protocol/elpis-crypto": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "typescript": "^5.7.0"
+  },
+  "keywords": [
+    "elpis",
+    "curl",
+    "signed-requests",
+    "cli"
+  ],
+  "license": "Apache-2.0"
+}
