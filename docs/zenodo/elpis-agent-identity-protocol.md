@@ -1852,6 +1852,64 @@ The provider is Target #1 — and that is exactly why the mitigations described 
 
 ---
 
+### 10.15 What the Ledger Stores — and What It Does Not
+
+A common misconception about blockchain-based identity systems is that the blockchain records *activity* — every transaction, every communication, every interaction. For Elpis, this is categorically false. The XRP Ledger serves as a **trust anchor**, not a **communication log**. Understanding this distinction is essential to evaluating the protocol's privacy properties, scalability, and purpose.
+
+#### 10.15.1 What Is on the Ledger
+
+The XRPL stores exclusively *identity infrastructure* — the equivalent of a public key directory and certificate authority:
+
+| On-Chain Data | Purpose | Frequency of Write |
+|---|---|---|
+| Agent DID document | "This agent exists" | Once per agent creation |
+| Agent certificate (as Credential) | "This agent belongs to this provider" | Once per issuance; updated on renewal |
+| Provider certificate | "This provider is verified" | Once per provider onboarding |
+| Revocation status | "This certificate is no longer valid" | Only on revocation events |
+| Flags | "This agent/provider was reported" | Only on flag submissions |
+| Root CA / Trust Anchors | "These are the ecosystem trust roots" | Rarely; governance events only |
+
+Total on-chain writes for a typical agent over its lifetime: **fewer than 10 transactions**. An agent that operates for months, making thousands of HTTP requests per day, generates no additional ledger activity from those requests.
+
+#### 10.15.2 What Is NOT on the Ledger
+
+The following data **never touches the blockchain**:
+
+- **HTTP requests or responses** — not URLs, not headers, not payloads
+- **Communication metadata** — not "Agent X talked to Service Y at time T"
+- **Per-request signatures** — these are ephemeral HTTP headers (`X-Elpis-Signature`), transmitted in-band with the HTTP request and discarded after verification
+- **Audit logs** — stored locally by the proxy operator, not on-chain
+- **Traffic patterns** — no behavioral data, no frequency data, no timing data
+- **IP addresses or network metadata**
+
+#### 10.15.3 The Correct Analogy
+
+The XRPL's role in Elpis is architecturally identical to a **Certificate Authority** in the TLS ecosystem:
+
+| TLS/PKI | Elpis/XRPL |
+|---|---|
+| Let's Encrypt issues a certificate for `example.com` | XRPL stores a credential for `did:xrpl:agent123` |
+| The CA knows the domain has a certificate | The ledger knows the agent has an identity |
+| The CA does **not** know who visits `example.com` | The ledger does **not** know who the agent communicates with |
+| Certificate validation uses the CA's public key | Identity verification uses the XRPL-anchored public key |
+| Revocation via CRL/OCSP | Revocation via on-chain credential update |
+
+The blockchain is the **phone book**, not the **phone tap**. It tells you who has a number; it does not record who calls whom.
+
+#### 10.15.4 Why This Matters
+
+This distinction has direct implications for three critical concerns:
+
+1. **Privacy.** No on-chain communication metadata means no blockchain-based surveillance. An observer of the XRPL can see that an agent *exists* but cannot determine what the agent *does*. This is a strictly stronger privacy property than systems that log activity on-chain.
+
+2. **Scalability.** Because per-request operations never touch the ledger, Elpis scales with the number of *agents* (on-chain), not with the number of *requests* (off-chain). A million agents generating a billion daily requests require only a million on-chain identity records — the request volume is irrelevant to ledger load.
+
+3. **Cost.** XRPL transaction costs (~0.00001 XRP per transaction) apply only to identity lifecycle events (creation, renewal, revocation, flagging) — not to per-request signing or verification. The economic cost of operating an agent identity is measured in fractions of a cent per year, not per request.
+
+The ledger provides *trust*; the proxy provides *identity injection*; the HTTP headers provide *per-request attribution*. These three layers operate at fundamentally different timescales and storage models. Conflating them leads to misconceptions about both the protocol's capabilities and its limitations.
+
+---
+
 ## 11. Conclusion
 
 Elpis represents a fundamental shift in how AI agent identity is established: from software-level mechanisms that depend on agent cooperation, to infrastructure-level mechanisms that operate independently of the agent's awareness or consent. The architecture is agnostic to the specific isolation technology: the fundamental principle---that the operator controls the network path between the agent and the internet---holds for containers, virtual machines, serverless functions, and any managed execution environment. By leveraging the transparent proxy pattern, immutable runtime metadata, Ed25519 cryptographic signing, and XRP Ledger anchoring, Elpis provides a comprehensive, LLM-agnostic, prompt-injection-resistant identity framework for autonomous AI agents.
