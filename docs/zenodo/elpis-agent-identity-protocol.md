@@ -1910,6 +1910,133 @@ The ledger provides *trust*; the proxy provides *identity injection*; the HTTP h
 
 ---
 
+### 10.16 Provider Trust Architecture: Engineering Customer Confidence
+
+The Elpis protocol delegates key custody and request signing to the provider's infrastructure. This concentration of cryptographic authority is an intentional design choice — it is what enables "identity without cooperation" — but it transforms the provider into the single most critical trust anchor in the system. This section specifies the architectural, procedural, and legal measures a provider MUST implement to justify that trust, and the mechanisms by which customers and third parties can independently verify compliance.
+
+#### 10.16.1 The Trust Equation
+
+A customer deploying AI agents through an Elpis provider implicitly trusts the provider with three categories of sensitive data:
+
+| Category | What the Provider Sees | Why It's Sensitive |
+|---|---|---|
+| **Request Content** | Full HTTP bodies (API calls, prompts, responses) via TLS interception | May contain business logic, customer PII, trade secrets |
+| **Signing Authority** | Private keys used to sign requests on behalf of the agent | Misuse could impersonate the agent or forge attribution |
+| **Behavioral Metadata** | Which APIs are called, when, how often, with what parameters | Reveals business operations, partnerships, competitive strategy |
+
+This is not unique to Elpis. Every managed infrastructure provider — cloud platforms (AWS, GCP, Azure), CDN providers (Cloudflare, Akamai), API gateways (Kong, Apigee), and service mesh control planes (Istio, Linkerd) — holds equivalent or greater access to customer traffic. What distinguishes a trustworthy provider is not the *absence* of access, but the *architectural constraints* that make misuse detectable, attributable, and economically irrational.
+
+#### 10.16.2 Architectural Trust Measures
+
+**Tier 1: Data Minimization by Design**
+
+The provider's proxy MUST implement data minimization as an architectural constraint, not merely a policy:
+
+1. **Sign-and-Forward**: The proxy reads the canonical string components (method, URL, body hash, timestamp, nonce), computes the signature, injects headers, and forwards. The request body is hashed but need not be stored. Implementations SHOULD stream request bodies through the hash function without buffering the full body in memory.
+
+2. **No Logging by Default**: Request bodies, response bodies, and API credentials MUST NOT be logged in production. Audit logs record only metadata: timestamp, agent DID, destination host, HTTP method, response status code. Full request logging MAY be enabled per-agent with explicit customer consent for debugging purposes, with automatic expiration (maximum 72 hours).
+
+3. **Credential Isolation**: When agents carry API keys or bearer tokens in their requests, the proxy observes these credentials during TLS interception. Providers MUST implement memory-only processing — credentials transit through the proxy but are never written to persistent storage. Implementations SHOULD use secure memory allocation (e.g., `mlock()`/`mprotect()`) for request processing buffers and zero memory after forwarding.
+
+**Tier 2: Hardware-Backed Key Isolation**
+
+As specified in Section 6.2.1, production providers SHOULD operate at Tier 2 (Cloud HSM) or Tier 3 (TEE) for signing key management:
+
+| Measure | Implementation | Verification |
+|---|---|---|
+| HSM-backed signing | Private keys generated and used inside HSM; proxy holds only key references | HSM audit logs; key never appears in process memory dumps |
+| TEE-based proxy | Proxy signing logic runs in SGX/Nitro enclave; host OS cannot access signing memory | Remote attestation document verifiable by customer |
+| Multi-party key ceremony | Root CA key generated via multi-sig ceremony with customer witness | Ceremony transcript and video recording provided to customer |
+| Key rotation automation | Agent keys rotated every 90 days; old keys destroyed in HSM | On-chain certificate history shows rotation timeline |
+
+**Tier 3: Verifiable Transparency**
+
+Trust without verification is faith, not security. Providers MUST offer mechanisms for independent verification:
+
+1. **On-Chain Audit Trail**: Every identity lifecycle event (creation, renewal, revocation, flagging) is recorded on the XRPL. Customers can independently monitor their agents' on-chain records without provider cooperation. Any unauthorized certificate change is publicly visible within one ledger close (~3-5 seconds).
+
+2. **Open-Source Proxy**: The Elpis proxy codebase SHOULD be published as open source, enabling customers and independent auditors to verify that the proxy performs only signing and forwarding — no data exfiltration, no credential harvesting, no behavioral logging beyond the specified metadata.
+
+3. **Reproducible Builds**: For TEE deployments, the proxy binary MUST be reproducibly buildable from source, allowing customers to verify that the enclave measurement (MRENCLAVE for SGX, PCR values for Nitro) matches the published source code. This closes the gap between "the code is open" and "the running code matches."
+
+4. **Customer-Accessible Metrics**: Providers MUST expose per-agent operational metrics (request count, error rate, signing latency, last activity timestamp) via authenticated API. Customers monitor their own agents' activity without depending on provider-generated reports.
+
+#### 10.16.3 Procedural and Compliance Measures
+
+Architectural measures constrain what is *technically possible*. Procedural measures constrain what is *organizationally permitted*:
+
+**Certifications and Audits**
+
+| Framework | Scope | Cadence | Relevance to Elpis Providers |
+|---|---|---|---|
+| **SOC 2 Type II** | Security, Availability, Confidentiality | Annual audit + continuous monitoring | Validates access controls, change management, incident response |
+| **ISO 27001** | Information Security Management System | Triennial certification + annual surveillance | Establishes systematic security governance |
+| **ISO 27701** | Privacy Information Management | Extension to ISO 27001 | Validates GDPR-aligned data processing practices |
+| **C5 (BSI)** | Cloud Computing Compliance Criteria Catalogue | Annual attestation | Required for German public sector; validates cloud security |
+| **EU AI Act Compliance** | AI system risk assessment and transparency | Ongoing | Elpis providers operate AI infrastructure; transparency obligations apply |
+
+**Operational Security**
+
+1. **Personnel Security**: All staff with access to production infrastructure MUST hold current background checks. Access follows least-privilege with role-based access control (RBAC). Administrative actions on signing infrastructure require two-person authorization (4-eyes principle).
+
+2. **Penetration Testing**: Independent third-party penetration tests MUST be conducted at minimum annually, with scope including: proxy compromise scenarios, key extraction attempts, privilege escalation within the container orchestration layer, and network segmentation bypass. Results are shared with customers under NDA.
+
+3. **Incident Response**: Documented incident response plan with defined SLAs: detection within 15 minutes (automated monitoring), initial assessment within 1 hour, customer notification within 24 hours for any incident affecting their agents' signing keys or request data. Post-incident reports provided within 5 business days.
+
+4. **Secure Development Lifecycle**: All proxy code changes undergo mandatory code review, static analysis (SAST), dependency scanning (SCA), and automated security testing before deployment. No single individual can push code to production.
+
+#### 10.16.4 Legal and Contractual Framework
+
+**GDPR Compliance**
+
+Under GDPR, the Elpis provider acts as a **data processor** when handling request data on behalf of the customer (data controller). This requires:
+
+1. **Data Processing Agreement (DPA)**: Contractually binding agreement specifying: purpose limitation (signing and forwarding only), data categories processed, retention periods, sub-processor obligations, and data subject access request (DSAR) procedures.
+
+2. **Data Residency**: Customers MUST be able to specify the geographic region for their proxy deployment. Request data MUST NOT leave the specified jurisdiction. For EU customers, this means EU-based proxy infrastructure with no transatlantic data transfer unless covered by an adequacy decision or appropriate safeguards (Standard Contractual Clauses).
+
+3. **Right to Audit**: The DPA MUST grant customers the right to audit (directly or via appointed third party) the provider's compliance with data protection obligations. This supplements but does not replace SOC 2/ISO 27001 certifications.
+
+**EU AI Act Obligations**
+
+Elpis providers operating AI agent infrastructure may qualify as providers or deployers of AI systems depending on the specific use case. Regardless of classification:
+
+1. **Transparency**: The Elpis protocol itself satisfies the AI Act's identification requirement — every AI-generated request carries cryptographic attribution to the responsible operator.
+2. **Risk Management**: Providers MUST maintain documentation of their risk management practices for the identity infrastructure.
+3. **Record-Keeping**: Audit logs of identity lifecycle events (maintained both on-chain and off-chain) satisfy record-keeping obligations.
+
+#### 10.16.5 Trust Differentiation: The Provider Competitive Landscape
+
+As the Elpis protocol gains adoption, multiple providers will offer identity services. Customer trust becomes the primary competitive differentiator. The following matrix illustrates how providers can position on a trust spectrum:
+
+| Trust Signal | Baseline Provider | Trusted Provider | High-Assurance Provider |
+|---|---|---|---|
+| Key storage | Redis (encrypted) | Cloud HSM | TEE with remote attestation |
+| Proxy source | Proprietary | Source-available | Open source + reproducible builds |
+| Audit certification | Self-assessed | SOC 2 Type II | SOC 2 + ISO 27001 + C5 |
+| Penetration testing | Internal only | Annual third-party | Continuous + bug bounty program |
+| Data residency | Best-effort | Contractual guarantee | Customer-managed infrastructure option |
+| Incident notification | Best-effort | 24-hour SLA | Real-time webhook + on-chain anomaly detection |
+| On-chain transparency | Standard | Standard + monitoring dashboard | Customer-operated validator node |
+
+The highest-assurance deployment model is **customer-managed proxy infrastructure**: the provider supplies the proxy software and HSM integration, but the customer operates the proxy within their own infrastructure. In this model, request data never leaves the customer's environment — the provider is responsible only for identity issuance and on-chain management. This is analogous to enterprise PKI where the CA issues certificates but the private key never leaves the subscriber's infrastructure.
+
+#### 10.16.6 Economic Alignment
+
+Trust architecture must be reinforced by economic incentives that make betrayal irrational:
+
+1. **Reputation Stake**: The provider's XRPL account and all issued agent identities are publicly linked. A single verified incident of key misuse or data breach is permanently visible on the ledger and affects *all* agents issued by that provider. The economic cost of betrayal (loss of all customers) vastly exceeds the economic benefit of any single exploit.
+
+2. **Bidirectional Flagging**: As specified in Section 4.3, the on-chain flagging system allows any party to flag a provider's agents. A pattern of flags against a provider is a public, immutable signal of untrustworthiness — it cannot be suppressed, deleted, or hidden.
+
+3. **Insurance and Liability**: High-assurance providers SHOULD carry cyber liability insurance covering key compromise and data breach scenarios. Insurance requirements create an additional external audit layer (insurers assess security posture before issuing policies) and provide financial recourse for affected customers.
+
+4. **Contractual Penalties**: DPAs SHOULD include liquidated damages clauses for material security breaches, creating direct financial consequences for negligence that go beyond reputational harm.
+
+The provider trust architecture follows the same principle as the protocol itself: **trust through verifiability, not through promises**. A provider's security posture is not what they claim — it is what can be independently verified through architectural constraints, public audit trails, third-party certifications, and on-chain transparency.
+
+---
+
 ## 11. Conclusion
 
 Elpis represents a fundamental shift in how AI agent identity is established: from software-level mechanisms that depend on agent cooperation, to infrastructure-level mechanisms that operate independently of the agent's awareness or consent. The architecture is agnostic to the specific isolation technology: the fundamental principle---that the operator controls the network path between the agent and the internet---holds for containers, virtual machines, serverless functions, and any managed execution environment. By leveraging the transparent proxy pattern, immutable runtime metadata, Ed25519 cryptographic signing, and XRP Ledger anchoring, Elpis provides a comprehensive, LLM-agnostic, prompt-injection-resistant identity framework for autonomous AI agents.
@@ -2006,5 +2133,5 @@ pandora.agent.display-name: {string}      # Optional: public-facing agent name
 
 ---
 
-*Date of first publication: March 2, 2026. Last revised: March 5, 2026.*
+*Date of first publication: March 2, 2026. Last revised: March 6, 2026.*
 *Reference implementation: https://elpis.efiniti.ai*
