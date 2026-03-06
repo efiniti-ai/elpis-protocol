@@ -1808,6 +1808,48 @@ It would be intellectually dishonest to claim that TLS interception raises no co
 
 The question is not "does the proxy see plaintext?" (yes, like all TLS-terminating infrastructure) but "does the proxy create a new trust boundary that did not previously exist?" (no — the provider already controls the agent's environment).
 
+#### 10.14.6 The Provider as High-Value Target
+
+Making the provider the explicit trust anchor has a corollary: the provider becomes the highest-value attack target in the Elpis ecosystem. Compromising a provider means gaining access to signing keys, plaintext traffic, and the ability to impersonate or frame any agent under that provider's control. This is a serious concern — and it is the same concern that applies to every centralized trust infrastructure in production today.
+
+**The pattern is universal:**
+
+| Trust Infrastructure | What Compromise Yields | Mitigation Ecosystem |
+|---|---|---|
+| Certificate Authority (DigiCert, Let's Encrypt) | Ability to issue fraudulent TLS certificates for any domain | CT logs, CAA records, key ceremonies, HSMs, audits |
+| Cloud Provider (AWS, GCP, Azure) | Access to all customer workloads, data, and credentials | SOC 2, ISO 27001, hardware isolation, shared responsibility model |
+| Email Provider (Google, Microsoft) | Access to all email content, password resets, 2FA bypass | Encryption at rest, access controls, transparency reports |
+| DNS Provider (Cloudflare, Route53) | Ability to redirect any domain to attacker-controlled servers | DNSSEC, monitoring, registry locks |
+| **Elpis Provider** | **Signing keys, agent traffic, identity impersonation** | **See mitigations below** |
+
+The existence of high-value targets does not make these systems unviable — it makes security investment proportional to the stakes. The mitigation strategy for Elpis providers follows the same patterns that have proven effective for other trust infrastructure:
+
+**Technical mitigations (already specified in this paper):**
+
+1. **Hardware-backed key management (Section 6.2.1).** TEE/HSM deployment ensures signing keys cannot be extracted even with full host compromise. This is a strictly stronger guarantee than what most Certificate Authorities provide for their intermediate signing keys.
+
+2. **On-chain audit trail.** Every agent certificate issuance, revocation, and flag is recorded on the XRPL — publicly visible and immutable. A compromised provider cannot silently issue fraudulent certificates; any issuance is immediately visible to the entire ecosystem.
+
+3. **Multi-signature governance (Section 10.9).** Root CA operations require multiple signers. A single compromised key holder cannot unilaterally issue provider certificates or revoke legitimate ones.
+
+4. **Bidirectional flagging (Section 4.4).** If a provider's agents behave anomalously (indicating compromise), any participant in the ecosystem can flag the provider. Flags are on-chain and trigger escalation — creating a distributed early warning system.
+
+5. **Revocation propagation in seconds (Section 4.3).** When a compromise is detected, the provider's certificate can be revoked on-chain in 3-5 seconds, instantly invalidating all agent identities under that provider. Compare this to the days-to-weeks CRL propagation delay in traditional PKI.
+
+**Economic and regulatory mitigations:**
+
+6. **EU AI Act liability.** Providers are legally liable for their agents' actions. This creates a direct financial incentive for security investment that scales with the provider's exposure. Negligent security practices result in regulatory penalties, not just reputational damage.
+
+7. **Market pressure (Section 10.8).** The provider economy creates competitive pressure for security. Providers who suffer breaches lose customers to competitors. This is the same market dynamic that drives cloud providers to invest billions in security infrastructure.
+
+8. **Insurance and audit requirements.** As the provider economy matures, insurance carriers and enterprise customers will require security audits (SOC 2, ISO 27001 equivalents) as a precondition for doing business — the same pattern that professionalized cloud provider security.
+
+**The architectural advantage:**
+
+Critically, Elpis's trust model makes the provider a *visible* high-value target — which is preferable to the alternative. In systems without explicit trust anchors (e.g., unmanaged AI agents using stolen API keys), the attack surface is diffuse, responsibility is unclear, and compromise detection is difficult. By concentrating trust in an identifiable, auditable, regulatable entity, Elpis enables the same security professionalization that transformed cloud computing from "trusting someone else's computer" to an industry with rigorous security standards.
+
+The provider is Target #1 — and that is exactly why the mitigations described above exist. The goal is not to eliminate the target (which would require eliminating centralized trust entirely — an unsolved problem) but to make the target hardened, auditable, and recoverable.
+
 ---
 
 ## 11. Conclusion
