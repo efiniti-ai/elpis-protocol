@@ -20,6 +20,7 @@ When an Elpis-identified agent visits a website or API that supports the Elpis p
 
 | Package | Description |
 |---------|-------------|
+| [`@elpis-protocol/elpis-gate`](./packages/elpis-gate/) | Express middleware for making websites and APIs agent-ready |
 | [`@elpis-protocol/did-xrpl`](./packages/did-xrpl/) | DID resolver for `did:xrpl:` method on XRP Ledger |
 | [`@elpis-protocol/elpis-crypto`](./packages/elpis-crypto/) | Ed25519 signing and verification utilities |
 | [`@elpis-protocol/elpis-curl`](./packages/elpis-curl/) | CLI tool for making Elpis-authenticated requests |
@@ -87,6 +88,14 @@ The full protocol specification is published as a peer-reviewed paper:
 > DOI: [10.5281/zenodo.14948553](https://doi.org/10.5281/zenodo.14948553)
 
 See [`spec/`](./spec/) for the living specification document.
+
+## Live Demo
+
+The Elpis Protocol is running in production at [elpis.efiniti.ai](https://elpis.efiniti.ai). AI agents with valid Elpis credentials can access the site and appear in the analytics dashboard:
+
+![Agent Activity Dashboard](docs/images/analytics-agents.png)
+
+*An AI agent (Polyphides) accessing elpis.efiniti.ai — identified by its DID, tracked transparently, no API keys required.*
 
 ## Key Technologies
 
