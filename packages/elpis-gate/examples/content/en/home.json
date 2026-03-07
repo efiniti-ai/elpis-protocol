@@ -1,0 +1,15 @@
+{
+  "scope": "home",
+  "language": "en",
+  "title": "Example Website",
+  "description": "An example website with Elpis Gate integration",
+  "navigation": [
+    { "label": "Home", "path": "/" },
+    { "label": "About", "path": "/about" },
+    { "label": "Contact", "path": "/contact" }
+  ],
+  "content": {
+    "heading": "Welcome",
+    "text": "This site supports the Elpis Protocol for verified AI agent access."
+  }
+}
