@@ -82,7 +82,7 @@ const result = verifier.verify('GET', 'https://example.com/', '', headers);
 
 ## Protocol Specification
 
-The full protocol specification is published as a peer-reviewed paper:
+The full protocol specification is published as prior art on Zenodo:
 
 > Kirchhofer, S. & Polyphides (2026). *Elpis Protocol: Infrastructure-Level Cryptographic Identity for Autonomous AI Agents via Transparent Proxy Injection and Distributed Ledger Anchoring.*
 > DOI: [10.5281/zenodo.14948553](https://doi.org/10.5281/zenodo.14948553)
