@@ -1522,6 +1522,43 @@ Elpis is committed to XRPL because it is the best available technology for the p
 
 This is analogous to how TLS certificates can be issued by different CAs without changing the TLS protocol itself. The protocol defines what a certificate must contain; the CA ecosystem determines who issues them. Elpis defines what an identity anchor must provide; the ledger ecosystem determines where it is stored.
 
+#### 10.10.5 Alternative Trust Anchor Candidates
+
+While XRPL serves as the reference implementation, two distributed ledger technologies merit discussion as concrete alternative bindings for Elpis identity anchoring:
+
+**IOTA.** The IOTA protocol offers feeless transactions — a property of particular relevance when identity operations scale to millions of agent DIDs. IOTA provides a native DID framework (`did:iota`) that is W3C DID-Core compliant, and the IOTA Foundation is headquartered in Berlin, providing an EU jurisdictional basis. The protocol's focus on IoT and machine identity aligns closely with the agent identity use case. However, IOTA's transition from the Coordinator-based consensus to the fully decentralized Coordicide mechanism is relatively recent compared to XRPL's 12+ years of continuous operation, and the ecosystem's maturity for credential management remains to be validated at scale.
+
+**EBSI (European Blockchain Services Infrastructure).** EBSI is operated by the European Commission and represents the strongest institutional trust anchor in the EU regulatory landscape. It provides a native DID method (`did:ebsi`), W3C-compliant Verifiable Credentials, and is being integrated into the eIDAS 2.0 framework and EU Digital Identity Wallets. For EU-regulated domains — particularly those subject to the EU AI Act — EBSI may be the politically preferred anchoring layer. The primary constraint is access: EBSI participation currently requires institutional affiliation within the EU framework, limiting its applicability for globally distributed agent networks.
+
+The selection of XRPL as the reference implementation reflects both its technical maturity and the principal author's practical experience with the XRPL ecosystem. This is stated transparently: the choice is empirically motivated, informed by hands-on development within the XRPL environment over the course of this project. IOTA and EBSI are proposed as the first concrete alternative bindings for future Elpis implementations.
+
+#### 10.10.6 Cross-Chain Identity Validation
+
+If Elpis agent identities are anchored on multiple ledgers, cross-chain validation becomes necessary. Three approaches are identified, ranging from immediately deployable to research-stage:
+
+**Universal Resolver (pragmatic).** The W3C Universal Resolver is an open-source component that resolves DIDs across methods — including `did:xrpl`, `did:iota`, and `did:ebsi` — through a unified interface. Since Elpis identity verification is fundamentally a DID resolution followed by an Ed25519 signature check, the cryptographic verification is already ledger-independent. Ed25519 is Ed25519 regardless of where the public key is anchored. The Universal Resolver provides the infrastructure to make this cross-ledger resolution operational today.
+
+**Cross-Chain Attestation Bridging (research).** A bridge validator reads an attestation on Ledger A, validates its cryptographic integrity, and writes an equivalent attestation on Ledger B. This enables agents anchored on different ledgers to verify each other's identities without direct access to the foreign ledger. The trust model for such bridges — specifically, who operates the bridge, what guarantees it provides, and how consistency is maintained during network partitions — constitutes an open research question. This is an area where academic collaboration, such as with specialized security research institutions, could yield significant results.
+
+**Linked DIDs (fallback).** An agent maintains multiple DIDs on different ledgers and links them via the `alsoKnownAs` property defined in W3C DID-Core. This is the simplest approach: each DID is independently verifiable on its respective ledger, and the linkage provides a pragmatic mechanism for compliance scenarios that require identity presence on a specific infrastructure (e.g., EBSI for EU AI Act compliance).
+
+#### 10.10.7 Towards a Ledger Abstraction Layer
+
+The architectural separation described in Section 10.10.3 points towards a formalized Ledger Abstraction Layer — a target architecture where the Elpis protocol defines a binding-agnostic interface:
+
+```
+interface ElpisLedgerBinding {
+    resolve(did: string): AgentIdentity
+    attest(credential: VerifiableCredential): TxHash
+    revoke(credentialId: string): TxHash
+    verify(did: string, signature: bytes): boolean
+}
+```
+
+Each supported ledger provides a binding that implements this interface. The Elpis Proxy and TLS extension interact exclusively with the abstraction layer, never with ledger-specific APIs. This is analogous to how TLS itself is not bound to a specific Certificate Authority — the protocol defines what a certificate must contain, and the CA ecosystem handles issuance.
+
+The current XRPL implementation is the first binding. IOTA and EBSI bindings are proposed as concrete next steps. The protocol is the standard; the ledger is interchangeable.
+
 ---
 
 ### 10.11 Adoption Dynamics: Historical Precedent and Convergent Market Forces
@@ -2044,6 +2081,8 @@ Elpis represents a fundamental shift in how AI agent identity is established: fr
 The system has been implemented, deployed, and validated in a production environment. A live reference implementation is publicly accessible at `https://elpis.efiniti.ai`, where the protocol's discovery endpoint (`/.well-known/elpis.json`) and verification endpoint (`/api/whoami`) demonstrate the complete identity flow. An AI agent visiting any web service is automatically identified through cryptographic headers — without login, without cookies, without API keys — purely through its infrastructure-level identity. The `/api/whoami` endpoint serves as both a debugging tool for agent operators and a public proof of concept: any HTTP client sending X-Elpis-* headers receives a JSON response confirming the parsed identity fields.
 
 The approach provides a standardized, infrastructure-level identity mechanism for AI agents that is comparable in architectural significance to TLS certificates for web servers: transparent to the application layer, enforced at the infrastructure layer, and universally applicable regardless of the underlying AI model or framework. Just as every web server today presents a TLS certificate without the application being aware of it, every AI agent operating behind an Elpis proxy presents a cryptographic identity without the model being aware of it.
+
+While the current reference implementation anchors identities on the XRP Ledger, the protocol architecture is ledger-independent by design (Section 10.10). The Ledger Abstraction Layer separates the identity mechanism from the trust anchor, enabling future bindings for alternative distributed ledger technologies — including IOTA for feeless scaling and EBSI for EU institutional compliance — without modifying the core protocol.
 
 ---
 

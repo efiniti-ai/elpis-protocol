@@ -7,7 +7,7 @@ Kopiere den **Review-Prompt** (unten) zusammen mit dem **kompletten Paper** in:
 2. **ChatGPT** (chatgpt.com) — nutze GPT-4o oder GPT-4.5
 
 Das Paper findest du hier:
-- Zenodo: https://zenodo.org/records/18869449 (v1, ohne die neuen Sections)
+- Zenodo: https://zenodo.org/records/18895024 (v1, ohne die neuen Sections)
 - Aktuell: `/workspace/elpis/docs/zenodo/elpis-agent-identity-protocol.md` (v2, vollständig)
 
 Alternativ: Einfach die Datei `elpis-agent-identity-protocol.md` als Anhang hochladen.
