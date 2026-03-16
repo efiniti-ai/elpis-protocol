@@ -758,6 +758,58 @@ The agent cannot bypass the identity injection because:
 3. **No key access**: The Ed25519 signing keys are stored in the proxy's key store (Redis or equivalent), not in the agent's container.
 4. **Audit trail**: Even if the proxy fails, the absence of expected headers is itself a signal that can trigger alerts.
 
+### 6.4 Behavioral Recovery: The Antidote Mechanism
+
+Sections 6.1–6.3 address threats to an agent's cryptographic identity — key compromise, spoofing, and circumvention. However, a distinct class of attack targets not the agent's identity but its *behavioral integrity*: **context poisoning**. In this scenario, an attacker injects malicious content into the agent's conversational context (via manipulated tool responses, adversarial user messages, or inter-agent communication), causing the agent to deviate from its intended behavior without any cryptographic compromise occurring.
+
+Traditional recovery from context poisoning requires either a full session reset (destroying accumulated work context) or agent termination and re-provisioning (incurring downtime). Both responses are disproportionate: the agent's identity and credentials remain valid; only its behavioral patterns have been corrupted.
+
+#### 6.4.1 Mechanism
+
+The Antidote mechanism exploits a well-documented property of autoregressive language models: **recency bias** — the tendency to weight recently observed patterns more heavily than earlier context when generating responses. Rather than destroying the poisoned context, Antidote *displaces* it by injecting a sequence of correct behavioral examples into the agent's conversation history:
+
+1. **Template Selection.** A set of 15–20 synthetic conversation tuples (user prompt → correct tool invocation → expected response) is selected from a pre-built template library. Templates are domain-specific: each MCP tool domain (messaging, scheduling, documentation, deployment) has its own set of canonical interaction patterns.
+
+2. **Signature Verification.** Each template is signed using Ed25519 by an authorized party (provider or designated administrator). Before injection, the signature is verified against the signer's on-chain public key (see Section 3.2). This prevents a second-order attack where the Antidote templates themselves are poisoned.
+
+3. **Injection.** The signed templates are written into the agent's conversation history database as synthetic but correctly formatted message sequences. A system-level notification is appended: `"[SYSTEM] Antidote applied: behavioral patterns refreshed. Previous context may contain anomalous entries."` This ensures the agent can contextualize the injected messages rather than misinterpreting them as organic history.
+
+4. **Verification.** After injection, the monitoring system (see Section 10.7.3) observes the agent's subsequent tool invocations for conformance with expected patterns. If behavioral drift metrics return to baseline within 3–5 interactions, the Antidote is considered successful.
+
+#### 6.4.2 Recovery Graduation Model
+
+Antidote occupies a specific position in a graduated recovery hierarchy, ordered by increasing destructiveness:
+
+| Level | Mechanism | Data Loss | Downtime | Precondition |
+|---|---|---|---|---|
+| 2.0 | Pattern Reset (re-inject system prompt) | None | None | Drift detected |
+| **2.5** | **Antidote (behavioral example injection)** | **None** | **None** | **Drift > threshold, context utilization < 60%** |
+| 3.0 | Context Rewind (truncate to last known-good state) | Partial | Brief | Antidote insufficient |
+| 4.0 | Hard Reset (terminate and re-provision) | Complete | Full restart | All else failed |
+
+The context utilization constraint at Level 2.5 is significant: injecting 15–20 additional messages into a context window that is already near capacity would accelerate context overflow without providing sufficient recency advantage. When context utilization exceeds 60%, a context compaction step must precede the Antidote injection.
+
+#### 6.4.3 Integration with Enforcement Architecture
+
+In a deployment with an active enforcement layer (see Section 10.7.3), the Antidote mechanism can be triggered automatically:
+
+1. The enforcement system continuously monitors agent tool invocations against expected behavioral baselines.
+2. When behavioral drift exceeds a configured threshold (e.g., anomalous tool targets, malformed parameters, unexpected invocation sequences), the system classifies the deviation as potential context poisoning.
+3. If the agent's cryptographic identity remains valid (certificates not revoked, signatures still correct), the system applies Antidote before escalating to more destructive recovery levels.
+4. Post-injection verification confirms whether the behavioral correction succeeded. If drift persists after Antidote, the system escalates to Level 3.0 or 4.0.
+
+This creates a closed self-healing loop: **Detection → Antidote → Verification** — analogous to an immune response that neutralizes a pathogen without destroying the host organism. The agent's identity, credentials, accumulated context, and active tasks are preserved throughout.
+
+#### 6.4.4 Limitations
+
+The Antidote mechanism is effective against *behavioral* poisoning — corrupted tool-call patterns, manipulated routing, induced policy violations — but does not address:
+
+- **Cryptographic compromise.** If the agent's signing keys are extracted, revocation (Section 4.3) remains the only response.
+- **Persistent poisoning sources.** If the attack vector remains active (e.g., a compromised tool endpoint continuously injecting malicious responses), Antidote provides only temporary relief. The poisoning source must be identified and isolated independently.
+- **Model-specific thresholds.** The number of Antidote messages required to displace poisoned context varies by model architecture, context window size, and attention mechanism. Empirical calibration is necessary for each deployment.
+
+To our knowledge, no existing agent framework implements a non-destructive behavioral recovery mechanism at this level. Current approaches uniformly default to session termination or full context reset upon detecting anomalous agent behavior — sacrificing accumulated work context as collateral damage.
+
 ---
 
 ## 7. Integration with Existing Standards
