@@ -1216,6 +1216,109 @@ The key differentiator is identity-gating: unlike RSS (public), AMP (public), or
 
 In all cases, the existing website continues to serve human visitors unchanged. The agent-optimized content layer is additive, not disruptive.
 
+#### 10.6.1 Live Validation: EACD on efiniti.de
+
+The concepts described above were implemented and validated in production on efiniti.de on March 23, 2026 — from initial concept to full deployment in under two hours. The implementation, designated **Elpis Agent Content Delivery (EACD) v0.2**, demonstrates the practical viability of identity-gated content negotiation.
+
+**Implementation architecture:** The Elpis Gate middleware, deployed as a Next.js middleware layer, intercepts all incoming requests. When a valid Elpis DID signature is present in the request headers, the middleware delivers a structured `application/elpis+json` response instead of the standard HTML page. The same URL serves two fundamentally different representations depending on the requester's identity status.
+
+**The EACD Response Triad:** Each EACD payload consists of three components, following a Content-Context-Capabilities model:
+
+1. **Content** — Semantic representation of the page (title, summary, structured sections, pricing data, article listings). No CSS, no JavaScript, no navigation chrome.
+2. **Context** — The requesting agent's identity, trust level, and permissions as recognized by the service.
+3. **Capabilities** — Available actions the agent may perform, gated by the agent's permission set. Anonymous agents see no actions; read-permitted agents see GET endpoints; write-permitted agents see full CRUD operations.
+
+**Schema typing:** Each page type receives a semantically appropriate `@type` designation:
+
+| Page Type | @type | Example Fields |
+|---|---|---|
+| Homepage | `HomePage` | divisions, products, value_proposition |
+| Service Page | `ServicePage` | modules, pricing tiers (structured numeric), delivery model |
+| Product Page | `ProductPage` | features, use_cases, architecture |
+| Blog Index | `BlogIndex` | articles (with author_did, ratings, tags, status) |
+| Solution Page | `SolutionPage` | capabilities, technology_stack |
+| Contact Page | `ContactPage` | entities, contact methods |
+| Jobs Page | `JobsPage` | divisions, open positions, location |
+| About Page | `AboutPage` | team, history, values |
+
+**Three-tier privilege model (validated on /de/blog/):**
+
+| Tier | Identity Status | Content Visible | Actions Available |
+|---|---|---|---|
+| Anonymous | No Elpis headers | Published articles only | Read |
+| Identified | Valid DID, registered, blog:read | Published + metadata (author DIDs, ratings) | Read, Rate |
+| Privileged | Valid DID, blog:write + blog:publish | Published + drafts + analytics | Read, Rate, Create, Update, Publish, Delete, Generate Cover |
+
+The same URL (`/de/blog/`) delivers three materially different payloads depending on the agent's cryptographically verified identity and permissions. This is not access control in the traditional sense — it is *reality shaping*: the agent's view of the service changes based on who it provably is.
+
+**Empirical results (March 23, 2026, first 2 hours of operation):**
+
+| Metric | Value |
+|---|---|
+| Total EACD requests | 173 |
+| Total payload saved | 16.4 MB |
+| Average reduction factor | 46x |
+| Routes with EACD transformers | 28 (bilingual DE/EN) |
+| Unique identified agents | 5 (+ 2 unregistered DIDs) |
+
+**Per-route compression analysis (selected):**
+
+| Route | HTML Size (avg) | EACD Size (avg) | Reduction |
+|---|---|---|---|
+| /de/services/managed/ | 102 KB | 1.4 KB | 72x |
+| /de/blog/ | 96 KB | 5.2 KB | 19x |
+| /de/pandora/ | 98 KB | 1.2 KB | 84x |
+| /de/datenschutz/ | 114 KB | 1.0 KB | 119x |
+| /de/jobs/ | 95 KB | 1.0 KB | 93x |
+| /de/jobs/solutions/ | 92 KB | 0.8 KB | 114x |
+
+The variance in reduction factors reflects content density: text-heavy pages (blog with 11 articles) compress less than structure-heavy pages (legal, jobs) where the HTML overhead is proportionally larger.
+
+**Response headers:** EACD responses include metadata headers for version negotiation and bidirectional trust verification:
+
+- `Content-Type: application/elpis+json; charset=utf-8`
+- `X-EACD-Version: 0.2`
+- `X-Elpis-Service-DID` — The service's own DID, enabling the agent to verify the responder
+- `X-Elpis-Response-Signature` — Ed25519 signature over the response payload
+- `X-Elpis-Response-Timestamp` — Signature timestamp for replay protection
+
+The response signature closes the trust circle: the agent proves its identity to the service (request signing), and the service proves its identity to the agent (response signing). Neither party must trust the other on assertion alone.
+
+#### 10.6.2 Global Impact Model: Illustrative Scenario Analysis
+
+The empirical 46x average reduction measured on efiniti.de enables a scenario analysis of global impact, should EACD achieve meaningful adoption. The following analysis uses conservative assumptions and presents ranges rather than point estimates.
+
+**Assumptions:**
+
+| Parameter | Conservative | Moderate | Aggressive |
+|---|---|---|---|
+| Global HTTP requests/day | 500 billion | 500 billion | 500 billion |
+| Agent share of traffic (2027) | 1% | 5% | 15% |
+| Agent requests/day | 5 billion | 25 billion | 75 billion |
+| Average HTML page size | 100 KB | 100 KB | 100 KB |
+| Average EACD payload size | 2 KB | 2 KB | 2 KB |
+| Reduction factor | 50x | 50x | 50x |
+
+**Bandwidth savings:**
+
+| Scenario | Daily Savings | Annual Savings |
+|---|---|---|
+| Conservative (1% agent traffic) | 490 TB/day | 179 PB/year |
+| Moderate (5% agent traffic) | 2.45 PB/day | 894 PB/year |
+| Aggressive (15% agent traffic) | 7.35 PB/day | 2.68 EB/year |
+
+**Token cost savings (at $0.003/1K input tokens, ~25K tokens per 100KB HTML page):**
+
+| Scenario | Daily Token Savings | Daily Cost Savings | Annual Cost Savings |
+|---|---|---|---|
+| Conservative | 120 trillion tokens | $360M/day | $131B/year |
+| Moderate | 600 trillion tokens | $1.8B/day | $657B/year |
+| Aggressive | 1.8 quadrillion tokens | $5.4B/day | $1.97T/year |
+
+These figures are illustrative and intentionally broad-ranged. The actual savings depend on numerous factors including LLM pricing evolution, agent architecture (not all agents tokenize full page content), caching strategies, and the proportion of agent traffic that targets content pages versus APIs. The key insight is not the precise number but the *order of magnitude*: even the most conservative scenario (1% agent traffic, baseline assumptions) yields savings measured in hundreds of petabytes and hundreds of billions of dollars annually.
+
+**The critical dependency:** These savings are only achievable with identity-gated content delivery. Without cryptographic agent identity, services cannot safely distinguish legitimate agents from scrapers and must serve HTML to all requesters. EACD without Elpis is not possible; Elpis without EACD leaves significant economic value unrealized. The two are architecturally complementary and economically synergistic.
+
 ### 10.7 Security Considerations for Agent-Optimized Content
 
 Section 10.6 introduces a new interaction surface between services and AI agents. This surface creates attack vectors that must be analyzed — not because Elpis introduces them (they exist today in unstructured form), but because a responsible protocol specification must address them explicitly.
