@@ -24,6 +24,7 @@ When an Elpis-identified agent visits a website or API that supports the Elpis p
 | [`@elpis-protocol/did-xrpl`](./packages/did-xrpl/) | DID resolver for `did:xrpl:` method on XRP Ledger |
 | [`@elpis-protocol/elpis-crypto`](./packages/elpis-crypto/) | Ed25519 signing and verification utilities |
 | [`@elpis-protocol/elpis-curl`](./packages/elpis-curl/) | CLI tool for making Elpis-authenticated requests |
+| [`elpis-cli`](./packages/elpis-cli/) | Python CLI: one command, 30 seconds, full on-chain agent identity (DID + MPT + Credential) |
 
 ## How It Works
 
