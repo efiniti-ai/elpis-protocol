@@ -1,0 +1,24 @@
+{
+  "name": "@elpis-protocol/elpis-gate",
+  "version": "0.1.0",
+  "description": "Express middleware for making websites and APIs agent-ready via Elpis Protocol",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" } },
+  "scripts": { "build": "tsc", "clean": "rm -rf dist" },
+  "dependencies": {
+    "@elpis-protocol/elpis-crypto": "*",
+    "@elpis-protocol/did-xrpl": "*"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "express": "^4.0.0 || ^5.0.0"
+  },
+  "keywords": ["elpis", "middleware", "express", "agent-identity", "did"],
+  "license": "Apache-2.0"
+}

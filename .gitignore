@@ -11,6 +11,17 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+# Node / TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+coverage/
+
+# Environment
+.env
+.env.*
+
 # Pandora Agent workspace files (auto-managed)
 .claude/
 .codex/
@@ -19,4 +30,3 @@ Desktop.ini
 .aider*
 .aider.chat.history.md
 .aider.input.history
-
