@@ -2229,6 +2229,102 @@ The provider trust architecture follows the same principle as the protocol itsel
 
 ---
 
+### 10.17 Beyond Agents: Elpis as Decentralized Public Key Infrastructure
+
+While Elpis is designed for autonomous AI agent identity, its architectural primitives — Ed25519 keypairs, DID anchoring on a public ledger, cryptographic header signing — constitute a general-purpose decentralized PKI that extends beyond the agent domain.
+
+#### 10.17.1 The PKI Problem
+
+Traditional Public Key Infrastructure (PKI) relies on a hierarchical Certificate Authority (CA) model: root CAs delegate trust to intermediate CAs, which issue certificates to end entities. This model, while functional, carries fundamental limitations:
+
+1. **Centralized trust**: A compromised or coerced root CA can issue fraudulent certificates for any domain. Historical incidents (DigiNotar 2011, Symantec 2017, Kazakhstan government 2019) demonstrate this is not theoretical.
+2. **Renewal overhead**: Certificates expire. ACME (RFC 8555) automates renewal but still requires periodic interaction with a CA server — a point of failure and dependency.
+3. **Cost and gatekeeping**: While Let's Encrypt democratized access, the underlying model still requires trust in a single organization (ISRG) as the root CA. Enterprise certificates from commercial CAs remain expensive.
+4. **Opacity**: Certificate Transparency (CT) logs improve visibility but are append-only monitoring, not a trust mechanism. A CA can still issue a certificate before CT logs detect it.
+
+#### 10.17.2 The Ledger as Certificate Authority
+
+Elpis inverts the PKI model. Instead of delegating trust from a root CA downward, trust is anchored in a public, permissionless, immutable ledger:
+
+| Property | Traditional PKI | Elpis Ledger-Based PKI |
+|---|---|---|
+| **Trust anchor** | Root CA (organization) | XRP Ledger (protocol) |
+| **Certificate issuance** | CA signs CSR | DID Object created on ledger |
+| **Revocation** | CRL/OCSP (delayed, often ignored) | On-chain deletion (~5 seconds, globally visible) |
+| **Renewal** | Periodic (ACME, manual) | Unnecessary — DID persists until explicitly revoked |
+| **Verification** | Query CA's OCSP responder | Query public ledger (any node, trustlessly) |
+| **Cost** | Free (Let's Encrypt) to expensive (EV certs) | ~0.00001 XRP per identity lifecycle event |
+| **Single point of failure** | Root CA compromise | None — ledger is decentralized |
+| **Transparency** | CT logs (after the fact) | Inherent — all operations are public transactions |
+
+The key insight is that the XRP Ledger provides the same trust properties as a CA — proof that a public key is associated with a specific identity — without requiring trust in any single organization. The ledger consensus mechanism replaces the CA's signing authority.
+
+#### 10.17.3 Self-Sovereign Identity Without Provider Dependency
+
+Elpis supports a tiered trust model that does not require provider involvement for basic identity:
+
+- **Tier 0 (Self-Sovereign)**: Any entity generates an Ed25519 keypair, creates a DID Object on the XRP Ledger, and begins signing requests. No CA, no provider, no KYC. The identity is wallet-anchored — as trustworthy as the wallet's reputation and on-chain history. This is analogous to a self-signed TLS certificate, but with public verifiability that self-signed certificates lack.
+
+- **Tier 1 (Provider-Attested)**: A provider co-signs the identity via an on-chain Verifiable Credential, attesting that the entity has undergone verification (KYC, domain ownership, organizational affiliation). This adds trust without replacing the self-sovereign foundation. Analogous to a CA-signed certificate.
+
+- **Tier 2 (Domain-Enrolled)**: The identity is registered in a Trusted Domain (Section 10.4), enabling mutual discovery and preferential treatment within an ecosystem of verified participants.
+
+Recipients choose which tier they require. A banking API may demand Tier 2. An open-source project may accept Tier 0. The protocol supports the full spectrum without architectural changes.
+
+#### 10.17.4 Implications Beyond Agent Identity
+
+This architecture is not limited to AI agents. Any entity that needs to prove its identity in HTTP communication — IoT devices, microservices, API clients, CLI tools, even human users acting through applications — can use the same mechanism:
+
+1. Generate an Ed25519 keypair
+2. Register a DID on the XRP Ledger
+3. Sign HTTP requests with X-Elpis-* headers
+4. Recipients verify against the public ledger
+
+No ACME server to depend on. No certificate expiration to manage. No CA to trust (or to be compromised). The ledger is the authority, and the ledger is public, permissionless, and immutable.
+
+#### 10.17.5 Progressive Trust: Credential Stacking
+
+A critical property of the Elpis tiered model is that trust can be acquired *progressively* without changing the underlying identity. An entity starts at Tier 0 (self-sovereign) and accumulates trust through additional on-chain attestations:
+
+1. **Day 1**: Entity creates a self-sovereign DID with its own wallet. No provider, no KYC. The DID is valid but carries minimal trust — analogous to a self-signed certificate, but publicly verifiable.
+
+2. **Later**: Entity undergoes KYC with Provider A (e.g., EFINITI). Provider A issues a Verifiable Credential on-chain (XRPL CredentialCreate) that references the entity's DID: "Provider A has verified this identity." The original DID is unchanged — it simply gains an additional attestation.
+
+3. **Later still**: Provider B independently attests the same DID. A Trusted Domain enrolls the DID. Each attestation is a separate on-chain object, issued by a different authority, all referencing the same DID.
+
+This is **credential stacking**, not certificate replacement. The identity does not change; its trust surface grows. Recipients can evaluate the accumulated attestations according to their own policies:
+
+- A low-security API might accept any valid DID (Tier 0).
+- A financial service might require at least one provider attestation with KYC (Tier 1).
+- A critical infrastructure system might require multiple independent attestations (multi-provider Tier 1+).
+
+This model is strictly more powerful than hierarchical PKI, where trust flows from exactly one root CA. In Elpis, trust is additive and multi-source — closer to a Web of Trust model, but anchored in an immutable public ledger rather than in ephemeral peer-to-peer key signing.
+
+**The passport analogy**: A passport (DID) is issued once. Visas (provider attestations) are stamped into it over time by different authorities. The passport itself does not change — it accumulates evidence of trustworthiness. Losing one visa does not invalidate the passport or the other visas.
+
+#### 10.17.6 Sybil Resistance Through Provider Attestation
+
+A permissionless identity system faces the Sybil problem: any entity can create unlimited identities at negligible cost. Elpis addresses this not by restricting identity creation — the protocol remains open — but by making *unattested identities distinguishable from attested ones*.
+
+**The two-layer model:**
+
+- **Open layer (protocol level)**: Anyone can generate a keypair, register a DID on the XRP Ledger, and begin signing requests. This is unrestricted by design. Anonymous DIDs are valid participants in the protocol and can interact with open services (e.g., public validation endpoints, community APIs, demo systems).
+
+- **Gated layer (provider level)**: Services that require trust demand provider attestation. A provider performs KYC (Know Your Customer) and issues an on-chain Verifiable Credential binding one verified natural or legal person to one wallet. Additional wallets may be attested for the same person, but each attestation is traceable to the same KYC record. Creating multiple unlinked identities requires multiple independent KYC processes with different providers — a cost that scales linearly with the number of fake identities.
+
+**Why this works:**
+
+1. **No protocol restriction**: The open layer ensures that Elpis adoption is not gatekept. Developers, researchers, and experimenters can use the protocol freely.
+2. **Economic Sybil cost**: Creating one anonymous DID is free. Creating one *trusted* DID requires KYC. Creating N trusted DIDs requires N KYC processes — the same economic barrier that makes Sybil attacks on traditional financial systems impractical.
+3. **Provider independence**: Each provider defines its own attestation policies. EFINITI may require government ID. Another provider may accept corporate registration. The protocol does not mandate a specific KYC standard — it provides the attestation mechanism.
+4. **Recipient autonomy**: Each service decides what trust level to require. A public API may accept anonymous DIDs. A financial service may require at least one KYC-backed attestation. A critical system may require attestations from multiple independent providers.
+
+This separation — open protocol, gated trust — mirrors the architecture of the internet itself: anyone can connect (IP), but accessing specific services requires authentication. Elpis provides the authentication layer without restricting the connectivity layer.
+
+This positions Elpis not merely as an agent identity protocol, but as a foundational building block for a post-CA trust architecture — one where identity is anchored in mathematics and consensus rather than in organizational authority.
+
+---
+
 ## 11. Conclusion
 
 Elpis represents a fundamental shift in how AI agent identity is established: from software-level mechanisms that depend on agent cooperation, to infrastructure-level mechanisms that operate independently of the agent's awareness or consent. The architecture is agnostic to the specific isolation technology: the fundamental principle---that the operator controls the network path between the agent and the internet---holds for containers, virtual machines, serverless functions, and any managed execution environment. By leveraging the transparent proxy pattern, immutable runtime metadata, Ed25519 cryptographic signing, and XRP Ledger anchoring, Elpis provides a comprehensive, LLM-agnostic, prompt-injection-resistant identity framework for autonomous AI agents.
