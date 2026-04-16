@@ -12,7 +12,7 @@ readme = "README.md"
 authors = [
     { name = "EFINITI GmbH", email = "dev@efiniti.de" },
 ]
-keywords = ["elpis", "did", "xrpl", "ai-agent", "identity", "ed25519", "verifiable-credentials"]
+keywords = ["elpis", "did", "iota", "xrpl", "ai-agent", "identity", "ed25519", "verifiable-credentials"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -30,8 +30,10 @@ dependencies = [
     "click>=8.0",
     "cryptography>=42",
     "httpx>=0.27",
-    "xrpl-py>=3.0",
 ]
+
+[project.optional-dependencies]
+xrpl = ["xrpl-py>=3.0"]
 
 [project.urls]
 Homepage = "https://elpis.efiniti.ai"

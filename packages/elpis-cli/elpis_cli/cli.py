@@ -30,10 +30,16 @@ def cli():
 @click.option("--provider", default="", help="Provider name (e.g. efiniti).")
 @click.option("--role", default="", help="Agent role description.")
 @click.option(
+    "--ledger",
+    default="iota",
+    type=click.Choice(["iota", "xrpl"]),
+    help="Ledger for DID anchoring (default: iota).",
+)
+@click.option(
     "--network",
     default="testnet",
     type=click.Choice(["testnet", "mainnet"]),
-    help="XRPL network for DID registration.",
+    help="Network for DID registration.",
 )
 @click.option(
     "--key",
@@ -46,15 +52,15 @@ def cli():
 @click.option(
     "--register/--no-register",
     default=True,
-    help="Register DID on XRPL (requires network access).",
+    help="Register DID on-chain (requires network access).",
 )
 @click.option("--wallet-address", default=None, help="XRPL wallet r-address (mainnet only).")
 @click.option("--wallet-secret", default=None, help="XRPL wallet secret (mainnet only).")
-def init(name, provider, role, network, key_path, force, register, wallet_address, wallet_secret):
+def init(name, provider, role, ledger, network, key_path, force, register, wallet_address, wallet_secret):
     """Initialize a new Elpis identity.
 
     Generates an Ed25519 keypair, creates a DID, and optionally
-    registers it on the XRPL Testnet.
+    registers it on IOTA or XRPL.
     """
     # Check existing identity
     if identity_exists() and not force:
@@ -86,6 +92,7 @@ def init(name, provider, role, network, key_path, force, register, wallet_addres
         network=network,
         private_seed=private_seed,
         public_key=public_key,
+        ledger=ledger,
     )
 
     # Save to ~/.elpis/
@@ -94,9 +101,21 @@ def init(name, provider, role, network, key_path, force, register, wallet_addres
     save_identity(identity)
     click.echo("Identity saved to ~/.elpis/")
 
-    # XRPL registration: full chain (DIDSet -> MPT -> Credential)
+    # On-chain registration
     if register:
-        if network == "testnet":
+        if ledger == "iota":
+            click.echo(f"Registering on IOTA {network.title()} (Faucet -> DID -> VC)...")
+            from .iota_client import register_did_testnet as iota_register
+
+            result = asyncio.run(
+                iota_register(
+                    did=identity["did"],
+                    public_key_hex=identity["public_key"],
+                    name=name,
+                    private_seed_hex=private_seed.hex(),
+                )
+            )
+        elif ledger == "xrpl" and network == "testnet":
             click.echo("Registering on XRPL Testnet (Faucet -> DIDSet -> MPT -> Credential)...")
             from .xrpl_client import register_did_testnet
 
@@ -107,7 +126,7 @@ def init(name, provider, role, network, key_path, force, register, wallet_addres
                     name=name,
                 )
             )
-        elif network == "mainnet":
+        elif ledger == "xrpl" and network == "mainnet":
             if not wallet_address or not wallet_secret:
                 wallet_address = wallet_address or click.prompt("XRPL wallet address (r...)")
                 wallet_secret = wallet_secret or click.prompt("XRPL wallet secret", hide_input=True)
@@ -142,7 +161,10 @@ def init(name, provider, role, network, key_path, force, register, wallet_addres
 
         if result:
             if result.get("address"):
-                identity["xrpl_address"] = result["address"]
+                if ledger == "iota":
+                    identity["iota_address"] = result["address"]
+                else:
+                    identity["xrpl_address"] = result["address"]
                 click.echo(f"  Wallet:     {result['address']}")
 
             steps = result.get("steps", {})
@@ -174,9 +196,12 @@ def init(name, provider, role, network, key_path, force, register, wallet_addres
     click.echo("")
     click.echo(f"  DID:        {identity['did']}")
     click.echo(f"  Name:       {identity['name']}")
+    click.echo(f"  Ledger:     {identity.get('ledger', 'xrpl')}")
     click.echo(f"  Network:    {identity['network']}")
     click.echo(f"  Public Key: {identity['public_key'][:16]}...")
     click.echo(f"  Cert Hash:  {identity['cert_hash']}")
+    if identity.get("iota_address"):
+        click.echo(f"  IOTA Addr:  {identity['iota_address']}")
     if identity.get("xrpl_address"):
         click.echo(f"  XRPL Addr:  {identity['xrpl_address']}")
     if identity.get("xrpl_tx_hash"):

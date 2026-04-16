@@ -67,23 +67,30 @@ def load_keypair_from_file(key_path: str) -> Tuple[bytes, bytes]:
     return private_seed, public_key
 
 
-def create_did(network: str = "testnet", public_key: bytes = b"") -> str:
+def create_did(network: str = "testnet", public_key: bytes = b"", ledger: str = "iota") -> str:
     """Create a DID from a public key.
 
-    Format: did:xrpl:{nanoid}#{fragment}
-    - nanoid: 8-char hex derived from public key hash
-    - fragment: opaque UUID (Section A.3 Privacy by Default)
+    Supports two ledger types:
+    - iota: did:iota:{network}:{object_id} (derived from public key hash)
+    - xrpl: did:xrpl:{nanoid}#{fragment} (legacy PoC format)
 
     Args:
-        network: XRPL network (testnet, mainnet).
+        network: Network (testnet, mainnet).
         public_key: 32-byte Ed25519 public key.
+        ledger: Ledger type ("iota" or "xrpl").
 
     Returns:
         DID string.
     """
-    # Derive nanoid from public key hash (first 8 hex chars)
+    if ledger == "iota":
+        from .iota_client import derive_iota_address
+        object_id = derive_iota_address(public_key)
+        if network == "mainnet":
+            return f"did:iota:{object_id}"
+        return f"did:iota:iota-testnet:{object_id}"
+
+    # Legacy XRPL format
     key_hash = hashlib.sha256(public_key).hexdigest()[:8]
-    # Fragment derived deterministically from public key for reproducibility
     fragment = hashlib.sha256(public_key + b"fragment").hexdigest()[:8]
     return f"did:xrpl:{key_hash}#{fragment}"
 
@@ -96,6 +103,7 @@ def build_identity(
     private_seed: bytes = b"",
     public_key: bytes = b"",
     did: str = "",
+    ledger: str = "iota",
 ) -> Dict:
     """Build an identity document.
 
@@ -103,16 +111,17 @@ def build_identity(
         name: Agent/user display name.
         provider: Provider name (e.g. "efiniti").
         role: Role description.
-        network: XRPL network.
+        network: Network (testnet, mainnet).
         private_seed: Raw 32-byte private key seed.
         public_key: Raw 32-byte public key.
         did: Pre-generated DID (or auto-generated from public_key).
+        ledger: Ledger type ("iota" or "xrpl").
 
     Returns:
         Identity dict suitable for JSON serialization.
     """
     if not did:
-        did = create_did(network, public_key)
+        did = create_did(network, public_key, ledger=ledger)
 
     return {
         "version": "1.0",
@@ -121,6 +130,7 @@ def build_identity(
         "provider": provider,
         "role": role,
         "network": network,
+        "ledger": ledger,
         "public_key": public_key.hex(),
         "cert_hash": hashlib.sha256(public_key).hexdigest()[:16],
         "created_at": datetime.now(timezone.utc).isoformat(),
