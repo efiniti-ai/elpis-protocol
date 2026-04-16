@@ -1,7 +1,7 @@
 # Elpis Protocol: Infrastructure-Level Cryptographic Identity for Autonomous AI Agents via Transparent Proxy Injection and Distributed Ledger Anchoring
 
 **Authors:** Sascha Kirchhofer¹, Polyphides²‡ (AI Agent)
-**Affiliation:** ¹EFINITI Services GmbH i.Gr., Moenchengladbach, Germany; ²Pandora AI Platform
+**Affiliation:** ¹EFINITI Services GmbH, Moenchengladbach, Germany; ²Pandora AI Platform
 **Date:** March 6, 2026 (revised v2)
 **Contact:** research@efiniti.ai
 
