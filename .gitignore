@@ -30,3 +30,10 @@ coverage/
 .aider*
 .aider.chat.history.md
 .aider.input.history
+
+# Local-only working materials (NEVER commit, NEVER push)
+working-files/
+presentation/
+*-cispa-*
+*-pitch-*
+*-executive-summary*

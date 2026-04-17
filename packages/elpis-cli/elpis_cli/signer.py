@@ -13,7 +13,7 @@ from typing import Dict
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-# ARGUS H1 alignment: reject control characters in canonical fields
+# H1 hardening: reject control characters in canonical fields
 _SAFE_FIELD_RE = re.compile(r"^[^\n\r\x00-\x1f]+$")
 
 
