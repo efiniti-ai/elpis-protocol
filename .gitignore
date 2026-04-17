@@ -32,8 +32,42 @@ coverage/
 .aider.input.history
 
 # Local-only working materials (NEVER commit, NEVER push)
+# These directories and patterns hold pitch decks, internal product details
+# and confidential funding/customer materials that must not leak into the
+# public Open-Source repository. Re-entry from any internal mirror, branch
+# checkout or backup restore is blocked here.
 working-files/
 presentation/
+pitch/
+pitches/
+internal/
+private/
+confidential/
+**/working-files/
+**/presentation/
+
+# Filename patterns covering pitch and confidential materials
 *-cispa-*
+*cispa*
 *-pitch-*
+*pitch-deck*
 *-executive-summary*
+*-funding-*
+*-internal-*
+*-confidential-*
+
+# Internal product naming (must not appear in public artifacts)
+*argus*
+*ARGUS*
+*-triple-shield-*
+
+# Screenshots and recordings (often contain internal hostnames/UI)
+screenshots/
+recordings/
+*.mov
+*.mp4
+
+# Lessons / agent notes that may contain operational secrets
+lessons.md
+NOTES.md
+TODO.local.md
